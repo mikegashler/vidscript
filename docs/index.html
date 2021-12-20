@@ -1,0 +1,1519 @@
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+  <title>VidScript</title>
+  <style>
+  body {
+    background-color: #e0d8d0;
+    background-image:url('texture.jpg');
+    background-repeat:repeat-x|repeat-y;
+  }
+
+  body,td,center {
+    font-family: verdana, tahoma, geneva, sans-serif;
+    font-size: 20px;
+  }
+
+  p {
+    text-indent: 0px;
+    line-height: 2.5;
+    padding-bottom: 25px;
+  }
+
+  li {
+    line-height: 2;
+    padding-bottom: 5px;
+  }
+
+  a {
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  .indent{
+      margin-left: 40px;
+  }
+
+  .code {
+      background-color: #ffffff;
+  }
+
+  .green {
+      background-color: #effff8;
+  }
+
+  </style>
+</head>
+<body>
+<br><br>
+<table border=1 bgcolor=#fff8f4 cellpadding=40 width=800 align=center><tr><td>
+<h1>VidScript Tutorial</h1>
+
+
+
+
+
+
+
+
+<h3>Table of Contents</h3>
+<ol>
+	<li><a href="#hello">Hello World!</a></li>
+	<li><a href="#animating">Animating</a></li>
+    <li><a href="#types">Types, parameters, and arguments</a></li>
+	<li><a href="#origin">The origin</a></li>
+    <li><a href="#order">Order of arguments</a></li>
+    <li><a href="#parts">Parts of code</a></li>
+    <li><a href="#builtin">Built in stuff</a></li>
+    <li><a href="#cloaking">Cloaking</a></li>
+    <li><a href="#type_params">Type parameters</a></li>
+    <li><a href="#local_vars">Local variables</a></li>
+    <li><a href='#timing'>Timing</a></li>
+    <li><a href='#nonlinear'>Nonlinear transformations</a></li>
+    <li><a href="#dom">The Document Object Model</a></li>
+
+</ol>
+
+
+
+
+
+
+
+
+
+<a id='hello'></a><h3>Hello World</h3>
+
+<p>
+    To get started, please paste the following code into your favorite text editor:
+</p>
+
+<pre class="code">
+from vidscript import vs
+
+script = vs.parse('''
+video
+    label
+        text = Hello world!
+''')
+
+vs.render_gui(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=1,
+    out_height=200,
+)
+</pre>
+
+<p>
+    Save it as "hello.py", then execute it:
+</p>
+
+<pre class="code">
+python hello.py
+</pre>
+
+<p>
+    It will render a single frame that looks like this:
+</p>
+
+<center><img src="hello.png" border="1"></center>
+
+<p>
+    Unfortunately, those words are somewhat hard to see because the video has a transparent background and the words are rather small.
+    So let's make it better.
+    The code in <font color="blue">blue</font> below adds a dark blue background object.
+    And the code in <font color="green">green</font> makes the text bigger.
+</p>
+
+<pre class="code">
+from vidscript import vs
+
+script = vs.parse('''
+video
+    <font color="blue">square
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64</font>
+    label
+        text = Hello world!
+        <font color="green">scale = 4</font>
+''')
+
+vs.render_gui(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=1,
+    out_height=200,
+)
+</pre>
+
+<p>Now, the frame it renders looks like this:</p>
+
+<center><img src="hello2.png"></center>
+
+<p>
+    If you prefer it to just render your frames without opening your web browser to display them,
+    you can omit the "_gui", like this:
+</p>
+
+<pre class="code">
+from vidscript import vs
+
+script = vs.parse('''
+video
+    square
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    label
+        text = Hello world!
+        scale = 4
+''')
+
+vs.<font color="red">render</font>(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=1,
+    out_height=200,
+)
+</pre>
+
+<p>
+    If you want to make the rendered frames bigger or smaller,
+    you can adjust the value of out_height.
+    (Smaller frames will render faster,
+    so I prefer to leave them small until I'm ready to render a finished video.)
+    The "vs.render" function has a few other parameters you can adjust if you want to:
+</p>
+
+<ul>
+    <li><b>script_name</b> specifies the name of your script.</li>
+    <li><b>video_obj</b> = 'video'. Specifies which part to render.</li>
+    <li><b>frame_count</b> = '10'. Specifies how many frames you want.</li>
+    <li><b>out_height</b> = '200'. Specifies the size of your frames.</li>
+    <li><b>in_width</b> = '1600'. Adjusts internal width coordinates.</li>
+    <li><b>in_height</b> = '900'. Adjusts internal height coordinates.</li>
+    <li><b>beg</b> = 0. Speifies the first frame to render.</li>
+    <li><b>end</b> = -1. Specifies which frame to stop rendering at.</li>
+    <li><b>renderCallback</b> is called before each line is rendered.
+        The default behavior is to print progress to stdout. (Not available with render_gui)</li>
+    <li><b>saveFrameCallback</b> is called after each frame is rendered.
+        The default behavior is to save the frame to a file. (Not available with render_gui)</li>
+</ul>
+
+
+
+
+
+
+
+<a id='animating'></a><h3>Animating</h3>
+
+<p>
+    Now, let's animate it.
+    The code in <font color="red">red</font> below will slide the label to the right.
+</p>
+
+<p>
+    To keep it simple, I'm only showing the VidScript portion of the code (The part enclosed in tripple quotes), here.
+    You'd still need to wrap this with a little bit of Python code, as in the examples above, if you want to actually render it.
+</p>
+
+<pre class="code">
+video
+    square
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    label
+        text = Hello world!
+        scale = 4
+        x = <font color="red">1600 * t</font>
+</pre>
+
+<p>
+    Screen coordinates are layed out with the origin in the center.
+    The default internal width is 1600 and height is 900, which arranges the coordinates like this:
+</p>
+
+<center><img src="coords.png"></center>
+
+<p>
+    Also, you will need to increase frame_count to a larger value. (19 is a good value for now.)
+    When you execute the code, the rendered frames will be placed in "hello/video".
+    If you'd like to turn those frames into an animated gif, here is a command to do that:
+</p>
+
+<pre class="green">
+convert -delay 10 -loop 0 *.png hello.gif
+</pre>
+
+<p>Or, perhaps you might prefer to make an mp4:</p>
+
+<pre class="green">
+convert -delay 10 -loop 0 *.png hello.mp4
+</pre>
+
+<p>(Does ffmpeg compress the videos better than "convert"? todo: investigate.)</p>
+
+<p>Anyway, this is what you should get:</p>
+
+<center><img src="hello1.gif"></center>
+
+<p>Instead of sliding the text, we could scale it:</p>
+
+<pre class="code">
+video
+    square
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    label
+        text = Hello world!
+        scale = 4 <font color="red">+ 2 * sin(2 * pi * t)</font>
+</pre>
+
+<center><img src="hello2.gif"></center>
+
+<p>...or we could rotate it:</p>
+
+<pre class="code">
+video
+    square
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    label
+        text = Hello world!
+        scale = 4
+        <font color="red">rot = t</font>
+</pre>
+
+<center><img src="hello3.gif"></center>
+
+
+
+
+
+
+
+
+
+
+
+<a id='types'></a><h3>Types, parameters, and arguments</h3>
+
+<p>
+    To do fancier transformations, we'll need to make a separate type for our text part.
+    I added a parameter for the rotation amount in <font color="darkorange">orange</font>,
+    I slipped in a comment in <font color="magenta">magenta</font>, and I passed <i>t</i> as an
+    argument to the part in <font color="red">red</font>.
+</p>
+
+<pre class="code">
+mytext <font color="darkorange">r = 0</font>
+    label
+        text = Hello world!
+        rot = r      <font color="magenta"># rotate it.</font>
+
+video
+    square  # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    mytext
+        scale = 4
+        <font color="red">r = t</font>
+</pre>
+
+<a id='origin'></a><h3>The origin</h3>
+
+<p>
+    In VidScript, every object has its own origin.
+    Whenever you scale or rotate, it is important to know where the origin of your object is.
+    (If you line up your objects visually, but neglect to align their origins,
+	wonky things will probably happen when you start scalling or rotating.)
+    To see where the origin is, it helps to temporarily put a small dot there, like this:
+</p>
+
+<pre class="code">
+mytext r = 0
+    <font color="red">circle</font>
+        scale=0.1
+    label
+        text = Hello world!
+        rot = r      # rotate it.
+
+video
+    square  # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    mytext
+        scale = 4
+        r = t
+</pre>
+
+<p>
+    Then, you can place the part where you want it.
+    In this example, I will offset the part by the opposite amount that I adjusted its origin,
+    so it will rotate through the same initial position as before.
+</p>
+
+<pre class="code">
+mytext r = 0
+    circle
+        scale = 0.1
+    label
+        text = Hello world!
+        <font color="red">x = 52</font>
+        rot = r
+
+video
+    square  # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    mytext
+        <font color="red">x = -52</font>
+        scale = 4
+        r = t
+</pre>
+
+<center><img src="hello4.gif"></center>
+
+
+
+
+
+
+
+
+
+<a id='order'></a><h3>Order of arguments</h3>
+
+<p>
+    After you get the behavior you like, you can remove the origin dots.
+    (Those were just there as temporary visual guides to help you understand where the origin of the part was.)
+</p>
+
+<p>
+    Also, please be aware that the order of your adjustments can make a big difference.
+    For example, scaling horizontally then rotating...
+</p>
+
+<table><tr>
+	<td>
+		<center><img src="order1.png"></center>
+	</td>
+	<td>
+<pre class="code">
+video
+    square  # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    circle
+        <font color="red">hscale = 5
+        rot = 1/8</font>
+</pre>
+	</td>
+</tr></table>
+
+<p>...is very different from rotating then scaling horizontally.</p>
+
+<table><tr>
+	<td>
+		<center><img src="order2.png"></center>
+	</td>
+	<td>
+<pre class="code">
+video
+    square  # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    circle
+        <font color="red">rot = 1/8
+        hscale = 5</font>
+</pre>
+</pre>
+	</td>
+</tr></table>
+
+<p>
+    The order of your parts only matters if two parts have the exact same z-value.
+    The order of your types does not make any difference at all.
+</p>
+
+
+
+
+
+
+<a id='parts'></a><h3>Parts of code</h3>
+
+<p>
+	Let's give names to the various parts of the code, so we can talk about it more formally.
+	Consider the following example code:
+</p>
+
+<center><img src="code.png"></center>
+
+<p>
+	Basically, VidScript consists of a bunch of types.
+	Each type has a bunch of parts.
+	And each part has a bunch of arguments.
+	Like this:
+</p>
+
+<center><img src="code_parts.png"></center>
+
+<p>
+	Now, let's point out some syntactical quirks of VidScript:
+</p>
+
+<p>
+	VidScript uses indentation levels to identify types, parts, and arguments, so you must use consistent indentation, just like in Python.
+	Tab characters are interpretted as 4 spaces.
+	(So if your favorite editor interprets tabs some other way, using tabs will likely lead to a lot of frustration.
+	If that is a problem, maybe just don't use tabs.)
+	You can indent however little or much you like, as long as you are consistent.
+</p>
+
+<p>
+	Block comments in VidScript begin at a "#&gt;".
+	But they don't end immediately at the "&lt;#".
+	Block comments end at the end of the line containing "&lt;#".
+</p>
+
+<p>
+	Parameters are separated by whitespace.
+    (You can put commas between them if you like, but it looks cleaner to just use spaces.)
+</p>
+
+
+
+
+
+
+<a id='builtin'></a><h3>Built-in stuff</h3>
+
+<p>
+    VidScript has the following built-in types:
+</p>
+
+<ul>
+    <li>circle
+        <div class="indent">
+            thickness = 50
+        </div>
+    </li>
+    <li>square
+        <div class="indent">
+        </div>
+    </li>
+    <li>triangle
+        <div class="indent">
+            x1 = 0<br>
+            y1 = 100<br>
+            x2 = -150 / sqrt(3)<br>
+            y2 = -50<br>
+            x3 = 150 / sqrt(3)<br>
+            y3 = -50
+        </div>
+    </li>
+    <li>label
+        <div class="indent">
+            text = ''
+        </div>
+    </li>
+    <li>image
+        <div class="indent">
+            filename = ''
+        </div>
+    </li>
+</ul>
+
+<p>
+    Perhaps you might wonder, "why does <b>triangle</b> offer six parameters
+    to let the user specify each of its three vertices,
+    but <b>square</b> offers none?"
+    Because you can use affine transformations (like "hscale", "vscale", "hskew", or "vskew")
+    to make any kind of parallelogram you like.
+    And if you want some fancy non-parallogram polygon, you can construct it with triangles.
+</p>
+
+<p>
+    The default coordinates of the primitive shapes are shown here.
+</p>
+
+<center><img src="shapes.png"></center>
+
+<p>
+    There are several built-in arguments that you can use with any part:
+</p>
+
+<ul>
+    <li><b>x</b> = relative horizontal translation</li>
+    <li><b>y</b> = relative vertical translation</li>
+    <li><b>z</b> = specify z-ordering</li>
+    <li><b>t</b> = time. Ranges from 0 to 1 over the lifetime of the object.</li>
+    <li><b>scale</b> = scales the part.</li>
+    <li><b>hscale</b> = horizontally scales the part.</li>
+    <li><b>vscale</b> = vertically scales the part.</li>
+    <li><b>hskew</b> = horizontally skews the part.</li>
+    <li><b>vskey</b> = vertically skews the part.</li>
+    <li><b>rot</b> = rotates the part. (specified as number of turns in counter-clockwise direction.)</li>
+    <li><b>red</b> = specify red channel (from 0 to 256)</li>
+    <li><b>green</b> = specify red channel (from 0 to 256)</li>
+    <li><b>blue</b> = specify red channel (from 0 to 256)</li>
+    <li><b>opacity</b> = adjust the opacity of the object (from 0 to 1)</li>
+    <li><b>cloak</b> = makes object invisible and cloak siblings when value is negative</li>
+    <li><b>beg</b> = indicates when a part comes into existence (relative to the time of its outer type)</li>
+    <li><b>end</b> = indicates when a part ceases to exist (relative to the time of its outer type)</li>
+</ul>
+
+<p>
+    Built-in constants:
+</p>
+
+<ul>
+    <li><b>e</b> = 2.718281828459045</li>
+    <li><b>pi</b> = 3.141592653589793</li>
+</ul>
+
+<p>
+    Built-in operators:
+</p>
+
+<ul>
+    <li><b>^</b> = exponent</li>
+    <li><b>/</b> = divide</li>
+    <li><b>%</b> = modulus</li>
+    <li><b>*</b> = multiply</li>
+    <li><b>-</b> = subtract</li>
+    <li><b>+</b> = add</li>
+    <li><b>abs</b> = absolute value</li>
+    <li><b>acos</b> = arc cosine</li>
+    <li><b>acosh</b> = arc hyperbolic cosine</li>
+    <li><b>asin</b> = arc sine</li>
+    <li><b>asinh</b> = arc hyperbolic sine</li>
+    <li><b>atan</b> = arc tangent</li>
+    <li><b>atanh</b> = arc hyperbolic tangent</li>
+    <li><b>ceil</b> = ceiling</li>
+    <li><b>clip</b> = clip(x, floor, ceil) return max(min(x, ceil), floor)</li>
+    <li><b>cos</b> = cosine</li>
+    <li><b>cosh</b> = hyperbolic cosine</li>
+    <li><b>cs</b> = unit cosine, such that cs(x) = cos(2 * pi * x)
+    <li><b>erf</b> = Gauss error function</li>
+    <li><b>floor</b> = floor</li>
+	<li><b>gamma</b> = gamma</li>
+	<li><b>lgamma</b> = log gamma</li>
+	<li><b>log</b> = natural logarithm</li>
+	<li><b>max</b> = Returns the max of one or more arguments</li>
+	<li><b>min</b> = Returns the min of one or more arguments</li>
+	<li><b>sign</b> = Returns 1 if positive or -1 if negative</li>
+	<li><b>sin</b> = sine</li>
+	<li><b>sinh</b> = hyperbolic sine</li>
+	<li><b>sn</b> = unit sine, such that sn(x) = sin(2 * pi * x)
+	<li><b>sqrt</b> = square root</li>
+	<li><b>tan</b> = tangent</li>
+	<li><b>tanh</b> = hyperbolic tangent</li>
+    <li><b>trans</b> = trans(a, b, x, y) returns x if a &lt; -b/2, y if a &gt; b/2, and interpolates if a is somewhere in between</li>
+</ul>
+
+
+
+
+<a id='aggregating'></a><h3>Aggregating objects</h3>
+
+<p>Let's put a square and a triangle together to make an arrow type.</p>
+
+<pre class="code">
+    arrow red=192 green=192 blue=64
+        square
+            hscale = .7
+            vscale = 1.5
+            y = 1.5 * 50 + 0.8 * 150
+            red = red
+            green = green
+            blue = blue
+        triangle
+            vscale = -1.6
+            hscale = 2
+            y = 80
+            red = red
+            green = green
+            blue = blue
+
+    video
+        square  # background
+            red = 0
+            green = 0
+            blue = 64
+            z = -10000
+            scale = 1000
+        arrow
+</pre>
+
+<center><img src="arrow.png"></center>
+
+<p>Some things to notice about this code:</p>
+
+<ul>
+    <li>Notice my arrow accepts three parameters.
+        These parameteter are separated by spaces.
+        (You can add commas if you prefer, but I think it looks cleaner to omit superfluous punctuation.)</li>
+    <li>Notice by default, I made my arrow yellow,
+        but the user could change the color by passing arguments for the part.</li>
+    <li>Notice my arrow passes these three color values to both child parts. ("red = red", etc.)
+        This is necessary because the default square color is green and the default triangle color is blue.
+        I want my arrow to be only one solid color.</li>
+    <li>Notice I made sure the point of my arrow was at the origin.
+        This makes sense to me because I imagine that would probably be the user's point of focus.</li>
+    <li>Notice to specify the y value of the square I used an expression instead of just a number.
+        This expression will be optimized to single constant before rendering,
+        so it won't slow down the rendering.</li>
+</ul>
+
+
+
+
+
+<a id='cloaking'></a><h3>Cloaking</h3>
+
+<p>
+    Sometimes, you may want to subtract parts instead of add them.
+    When a negative value is specified for the "cloak" argument,
+    the part acts sort of like an invisibility cloak,
+    making itself and the portion of all sibling parts behind it invisible.
+</p>
+
+<pre class="code">
+moon
+    circle    # The yellow part
+        x=-15
+        z=0
+        red=255
+        green=255
+        blue=128
+    circle    # The subtracted part
+        x=15
+        <font color="red">cloak=-1</font>
+        z=1
+
+video
+    square
+        red=0
+        green=0
+        blue=64
+        z=-10000
+        scale=1000
+    triangle
+        scale=3
+        x=-40
+        y=-170
+    moon
+        scale=4
+        z = 10
+</pre>
+
+<center><img src="moon.png"></center>
+
+<p>
+    Note the triangle is not cloaked because it is not part of the same type.
+</p>
+
+
+
+<a id='type_params'></a><h3>Type parameters</h3>
+
+<p>
+    Suppose you want to make a video that involves a bouncing ball.
+    It would be nice if you could implement the bouncing separately from the ball.
+    That way, if you ever wanted to make something else bounce, you'd be all ready to go.
+    Here's how you could do that:
+</p>
+
+<pre class="code">
+bounce <font color="red">sub=circle</font>
+    sub
+        y = max(0, 600 * cos(21 * t) * e^(-1.5 * t))
+</pre>
+
+<p>
+    By default, "bounce" will make a bouncing circle.
+    But the user can optionally pass in some different type to make it bounce instead.
+</p>
+
+<p>
+    We can make the bounce look even better by squashing the object when it hits the ground.
+</p>
+
+<pre class="code">
+bounce sub=circle
+    sub
+        <font color="red">vscale = 1 - max(0, -.7 *
+            cos(21 * t) * e^(-1.5 * t))
+        hscale = 1 + max(0, -.7 *
+            cos(21 * t) * e^(-1.5 * t))</font>
+        y = max(0, 600 *
+            cos(21 * t) * e^(-1.5 * t))
+</pre>
+
+<a id='local_vars'></a><h3>Local variables</h3>
+
+<p>
+    It seems a shame to compute the same values several times.
+    So let's use a local variable to simplify it.
+</p>
+
+<pre class="code">
+bounce sub=circle
+    <font color="red">h = cos(21 * t) * e^(-1.5 * t)</font>
+    sub
+        vscale = 1 - max(0, -.7 * h)
+        hscale = 1 + max(0, -.7 * h)
+        y = max(0, 600 * h)
+</pre>
+
+<p>
+    Note that local variables have the same indentation level as a part.
+    (If you try to make a local variable at the indentation level of the arguments,
+    it will think you are trying to make an argument,
+    and it will tell you that the part is not expecting that argument.)
+</p>
+
+<p>
+    So now, let's put it all together to make a bunch of bouncing things.
+</p>
+
+<pre class="code">
+moon
+    circle    # The yellow part
+        x=-15
+        z=0
+        red=255
+        green=255
+        blue=128
+    circle    # The subtracted part
+        x=15
+        cloak=-1
+        z=1
+
+ground_moon
+    moon
+        x=20
+        y=50
+        scale=1.5
+
+arrow red=192 green=192 blue=64
+    square
+        hscale=.7
+        vscale=1.5
+        y=1.5 * 50 + 0.8 * 150
+        red=red
+        green=green
+        blue=blue
+    triangle
+        vscale=-1.6
+        hscale=2
+        y=80
+        red=red
+        green=green
+        blue=blue
+
+ground_circle
+    circle
+        y = 50
+        scale = 1.5
+
+ground_triangle
+    triangle
+        scale = 2
+        y = 50
+
+ground_square
+    square
+        y = 50
+        scale = 1.5
+
+bounce sub=circle
+    h=cos(21 * t) * e^(-1.5 * t)
+    sub
+        vscale=1 - max(0, -.7 * h)
+        hscale=1 + max(0, -.7 * h)
+        y=max(0, 600 * h)
+
+video
+    square
+        red=0
+        green=0
+        blue=64
+        z=-10000
+        scale=1000
+    bounce
+        sub = ground_circle
+        x = -600
+        y = -450
+    bounce
+        sub = ground_triangle
+        x = -300
+        y = -450
+    bounce
+        sub = ground_square
+        x = 0
+        y = -450
+    bounce
+        sub=arrow
+        x=300
+        y=-450
+    bounce
+        sub=ground_moon
+        x=600
+        y=-450
+</pre>
+
+<p>
+    Our scripts are starting to get large.
+    That's okay, as long as you can still understand them.
+    Note that I had to wrap the moon, circle, square, and triangle in custom types to shift their origin to their bottoms.
+    It is necessary to do that so they will still be lined up when they are smooshed.
+</p>
+
+<p>
+    I used 60 frames for this animation, so it is a little smoother than the ones that only use 30 frames.
+    If you wanted a really high-quality animation, you could render it with yet more frames.
+</p>
+
+<center><img src="bounce.gif"></center>
+
+
+
+
+
+
+<a id='timing'></a><h3>Timing</h3>
+
+<p>
+    You probably don't want all your parts to begin and end at the same time.
+    So, you can adjust their life-spans with <b>beg</b> and <b>end</b> arguments.
+    For example:
+</p>
+
+<pre class="code">
+moon
+    circle    # The yellow part
+        x=-15
+        z=0
+        red=255
+        green=255
+        blue=128
+    circle    # The subtracted part
+        x=15
+        cloak=-1
+        z=1
+
+ground_moon
+    moon
+        x=20
+        y=50
+        scale=1.5
+
+arrow red=192 green=192 blue=64
+    square
+        hscale=.7
+        vscale=1.5
+        y=1.5 * 50 + 0.8 * 150
+        red=red
+        green=green
+        blue=blue
+    triangle
+        vscale=-1.6
+        hscale=2
+        y=80
+        red=red
+        green=green
+        blue=blue
+
+ground_circle
+    circle
+        y = 50
+        scale = 1.5
+
+ground_triangle
+    triangle
+        scale = 2
+        y = 50
+
+ground_square
+    square
+        y = 50
+        scale = 1.5
+
+bounce sub=circle
+    h=cos(21 * t) * e^(-1.5 * t)
+    sub
+        vscale=1 - max(0, -.7 * h)
+        hscale=1 + max(0, -.7 * h)
+        y=max(0, 600 * h)
+
+video
+    square
+        red=0
+        green=0
+        blue=64
+        z=-10000
+        scale=1000
+    bounce
+        sub = ground_circle
+        x = -600
+        y = -450
+        <font color="red">beg = 0.0
+        end = 0.6</font>
+    bounce
+        sub = ground_triangle
+        x = -300
+        y = -450
+        <font color="red">beg = 0.1
+        end = 0.7</font>
+    bounce
+        sub = ground_square
+        x = 0
+        y = -450
+        <font color="red">beg = 0.2
+        end = 0.8</font>
+    bounce
+        sub=arrow
+        x=300
+        y=-450
+        <font color="red">beg = 0.3
+        end = 0.9</font>
+    bounce
+        sub=ground_moon
+        x=600
+        y=-450
+        <font color="red">beg = 0.4
+        end = 1.0</font>
+</pre>
+
+<center><img src="bounce_seq.gif"></center>
+
+<p>
+    Note in VidScript time is relative.
+    For the whole video, time 0 is the first frame and time 1 is just past the last frame.
+    But the parts do not know how much of the video they occupy.
+    From their perspectives, they always begin at time 0 and end at time 1.
+    The type that encloses them gets to specify how much of its allotted time that spans.
+</p>
+
+<p>
+    You can arrange your videos however you like.
+    But typically, I think it makes sense to think of the parts of the video as a sequence of scenes that are lined up back-to-back with each other.
+    Then the parts of each scene are shots that are also sequenced back-to-back.
+    Finally, each shot contains multiple parts that are objects that overlap in time and interact with each other.
+</p>
+
+<p>
+    When you are making a big video, you will typically only render the scene or shot you are currently working on,
+    to make sure it looks like you intended.
+    Rendering the whole video takes a long time, so you usually want to put that off until the whole project is done.
+</p>
+
+
+
+
+<a id='nonlinear'></a><h3>Nonlinear transformations</h3>
+
+<p>
+    To understand VidScript, imagine that your video is a continuous block of pixels arranged in space-time.
+    Most graphical video editors treat space-time as a rigid thing that cannot be moved or warped,
+    and objects as existing somewhere inside this block of space-time.
+</p>
+
+<center><img src="space-time.png"></center>
+
+<p>
+    (I omitted the z-value because 2-dimensional projections of 4-dimensional boxes are just too confusing.)
+</p>
+
+<p>
+    But that's not how VidScript does it.
+    In VidScript, the block of space-time merely gives the starting values for each pixel in the video.
+    Your objects are really arranged in a hierarchy or tree structure, not at positions in space-time.
+    The interior nodes of this tree are the math that warps or adjusts the pixels.
+    The leaf nodes are the primitive shapes (circle, triangle, square, image, or label) that specify the color of the pixel where it ends up.
+    So your objects don't really even exist anywhere in the video-universe, per se.
+    Rather, the math in your object hierarchy is what connects their spatio-temporal properties to the video-universe.
+</p>
+
+<center><img src="tree.png"></center>
+
+<p>
+    For example, when you say "x = 3", you are not moving some object 3 pixels to the right;
+    you are actually moving whichever pixel is being rendered 3 units to the left (before discovering if it will encounter your object there).
+    When you say "scale = 2", you are not doubling the size of an object;
+    you are halving the distance between the pixel being rendered and the origin.
+    So the renderer doesn't just directly compute the color that belongs at each pixel in space-time;
+    it pushes every pixel in space-time through your object hierarchy to its leafs.
+    (I believe "leafs" rather than "leaves" is technically correct here, since we are not talking about biological entities.)
+    When the renderer reaches the leafs, there will be many parallel answers--as many as you have leafs in your object hierarchy.
+    So it uses the one in front (with the biggest z-value) to be the color you see at that position in the video.
+</p>
+
+<p>
+    (If you happen to like woo and you know just enough about theoretical physics to be dangerous,
+    think of warping space-time from the perspective of General Relativity,
+    think of the hierarcy of objects as the quantum multi-verse of parallel worlds,
+    and think of VidScript as the unifying theory that combines both of them to render the Universe.)
+</p>
+
+<p>
+    Since every pixel is rendered independently of all others, there is no persisting of state.
+    Ideally, a good renderer would exploit this to do all the rendering in parallel.
+    Alas, I haven't implemented that yet, so the VidScript renderer is still painfully slow--sorry, deal with it.
+    But if you can endure the slow renderer (until I get around to parallelizing it),
+    this paradigm of warping space-time gives you the power do arbitrarily fancy transformations,
+    limited only by your mathematical proficiency.
+</p>
+
+<p>
+    Here are a couple images I used for this next example:
+</p>
+
+<img src="black_hole.png"><br>
+<img src="saturn.png">
+
+<p>
+    Let's the scale our pixels as a function of their distance from the origin.
+    This will let us see tidal effects as a planet gets sucked into the black hole.
+    No, these equations are physically-correct.
+    I'm not trying to make a physics simulator, here.
+    I'm just making videos.
+</p>
+
+<pre class="code">
+<font color="red">gravity sub=circle width=800 depth=1
+    dist = sqrt(x * x + y * y)
+    force = width / (dist + width)
+    sub
+        scale = (1.0 - force) ^ depth</font>
+
+planet
+    image
+        filename = saturn.png
+        x = 800
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=0
+    image
+        filename = black_hole.png
+        x = -400
+    gravity
+        sub = planet
+        depth = t
+        x = -400
+        z = 1
+</pre>
+
+<center><img src="black_hole.gif"></center>
+
+<p>
+    It looks like motion, doesn't it?
+    But it's not.
+    It's just warped space-time.
+    Well, in a sense, I suppose they're the same thing.
+    Anyway, if we wanted to, we could exaggerate the tidal forces a little more so we could watch the black hole tear the planet apart,
+</p>
+
+<pre class="code">
+    gravity
+        sub = planet
+        depth = t
+        x = -400
+        z = 1
+        <font color="red">depth = 4
+        width = 200</font>
+</pre>
+
+<center><img src="black_hole2.gif"></center>
+
+<p>
+    but in this case I think subtlety is more elegant.
+    Maybe we'll add a little swirl.
+    Note in this example we are nesting multiple transformations:
+</p>
+
+<pre class="code">
+gravity sub=circle width=800 depth=1
+    dist = sqrt(x * x + y * y)
+    force = width / (dist + width)
+    sub
+        scale = (1.0 - force) ^ depth
+
+<font color="red">swirl sub=triangle width=20 depth=4
+    dist = sqrt(x * x + y * y)
+    theta = depth * width / (dist + width)
+    s = sn(theta)
+    c = cs(theta)
+    xx = x
+    yy = y
+    sub
+        x = xx * c - yy * s
+        y = xx * s + yy * c
+</font>
+planet
+    image
+        filename = saturn.png
+        x = 800
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=0
+    image
+        filename = black_hole.png
+        x = -400
+    <font color="red">swirl
+    	depth = 8
+        sub = gravity
+        sub.depth = t
+        sub.sub = planet</font>
+        x = -400
+        z = 1
+</pre>
+
+<center><img src="black_hole3.gif"></center>
+
+<p>Because VidScript is stateless, using a "." to reference values in sub-components is only allowed on the left side of the equal sign.</p>
+
+<p>Here's a demo that makes an object fade in and out:</p>
+
+<pre class="code">
+<font color="red">fade_in sub=circle len=0.2
+    sub
+        opacity = trans(t - len / 2, len, 0, 1)
+
+fade_out sub=circle len=0.2
+    sub
+        opacity = trans(t - 1 - len / 2, len, 1, 0)</font>
+
+planet
+    image
+        filename = saturn.png
+        x = 800
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=0
+    image
+        filename = black_hole.png
+        x = -400
+    fade_in
+        sub = fade_out
+        sub.sub = planet
+        x = -400
+        z = 1
+        beg = 0.3
+        end = 0.8
+</pre>
+
+<center><img src="black_hole4.gif"></center>
+
+<p>Let's make the planet wave like a flag:</p>
+
+<pre class="code">
+<font color="red">wavy sub=circle amp=50 wavelen=600 phase=0
+    sub
+        x = amp * sn(y / wavelen + phase)</font>
+
+planet
+    image
+        filename = saturn.png
+        x = 800
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=0
+    image
+        filename = black_hole.png
+        x = -400
+    wavy
+        sub = planet
+        phase = t
+        x = -400
+        z = 1
+</pre>
+
+<center><img src="black_hole5.gif"></center>
+
+<p>
+    If we tone down the wavelength and amplitude, it looks more like a reflection in water:
+</p>
+
+<pre class="code">
+wavy sub=circle <font color="red">amp=20 wavelen=30</font> phase=0
+    sub
+        x = amp * sn(y / wavelen + phase)
+
+planet
+    image
+        filename = saturn.png
+        x = 800
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=0
+    image
+        filename = black_hole.png
+        x = -400
+    wavy
+        sub = planet
+        phase = t
+        x = -400
+        z = 1
+</pre>
+
+<center><img src="black_hole6.gif"></center>
+
+<p>
+    Obviously, these examples do not even begin to demonstrate all you can do with math.
+    But hopefully they give you a reasonable starting point for building your library of objects and transformations.
+</p>
+
+
+
+
+
+
+<a id='dom'></a><h3>The Document Object Model</h3>
+
+<p>For reference,here is a full Python program to render just the bouncing arrow:</p>
+
+<pre class="code">
+from vidscript import vs
+
+script = vs.parse('''
+arrow red=192 green=192 blue=64
+    square
+        hscale=.7
+        vscale=1.5
+        y=1.5 * 50 + 0.8 * 150
+        red=red
+        green=green
+        blue=blue
+    triangle
+        vscale=-1.6
+        hscale=2
+        y=80
+        red=red
+        green=green
+        blue=blue
+
+bounce sub=circle
+    h=cos(21 * t) * e^(-1.5 * t)
+    sub
+        vscale=1 - max(0, -.7 * h)
+        hscale=1 + max(0, -.7 * h)
+        y=max(0, 600 * h)
+
+video
+    square
+        red=0
+        green=0
+        blue=64
+        z=-10000
+        scale=1000
+    bounce
+        sub=arrow
+        x=300
+        y=-450
+''')
+
+vs.render_gui(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=30,
+    out_height=200,
+)
+</pre>
+
+<center><img src="arrow.gif"></center>
+
+<p>
+    Instead of using VidScript, you can generate DOM objects directly in Python, like this:
+</p>
+
+<pre class="code">
+from vidscript import vs, Script, Type, Part
+
+script = Script([
+    Type('arrow', [
+            ('red', '192'),
+            ('green', '192'),
+            ('blue', '64')
+        ],
+        [
+            Part('square', [
+                ('hscale', '.7'),
+                ('vscale', '1.5'),
+                ('y', '1.5 * 50 + 0.8 * 150'),
+                ('red', 'red'),
+                ('green', 'green'),
+                ('blue', 'blue'),
+            ]),
+            Part('triangle', [
+                ('vscale', '-1.6'),
+                ('hscale', '2'),
+                ('y', '80'),
+                ('red', 'red'),
+                ('green', 'green'),
+                ('blue', 'blue'),
+            ]),
+        ]
+    ),
+    Type('bounce', [('sub', 'circle')],
+        [
+            ('h', 'cos(21 * t) * e^(-1.5 * t)'),
+            Part('sub', [
+                ('vscale', '1 - max(0, -.7 * h)'),
+                ('hscale', '1 + max(0, -.7 * h)'),
+                ('y', 'max(0, 600 * h)'),
+            ]),
+        ]
+    ),
+    Type('video', [],
+        [
+            Part('square', [
+                ('red', '0'),
+                ('green', '0'),
+                ('blue', '64'),
+                ('z', '-10000'),
+                ('scale', '1000'),
+            ]),
+            Part('bounce', [
+                ('sub', 'arrow'),
+                ('x', '300'),
+                ('y', '-450'),
+            ]),
+        ]
+    ),
+])
+
+vs.render(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=30,
+    out_height=200,
+)
+</pre>
+
+<p>
+    This code does exactly the same thing as the one before it, but is harder to read.
+    The reason learning about DOM objects is worthwhile is because it is easier to manipulate them programmatically.
+    Usually, we do not write entire scripts using pure DOM objects, as above.
+    Usually, we use VidScript to write most of the script, then use Python to programmatically inject a few parts.
+</p>
+
+<p>
+    Here is an example that uses both methods to make a video of confetti.
+</p>
+
+<pre class="code">
+from vidscript import vs, Script, Type, Part
+import random
+
+script = vs.parse('''
+confetti seed=0 red=255 green=128 blue=128
+    circle
+        hscale = sin(17 * t + 7 * seed)
+        rot = seed / 1000
+        x = 60 * sin(14 * t + seed)
+        y = 420 - 1000 * t
+        red = red
+        green = green
+        blue = blue
+
+video
+    square   # background
+        red=0
+        green=0
+        blue=64
+        z=-10000
+        scale=1000
+''')
+
+video = script.get_type('video')
+for i in range(50):
+    video.add_part(
+        Part('confetti', [
+            ('x', f'{random.randrange(1200) - 600}'),
+            ('y', f'{random.randrange(600)}'),
+            ('seed', f'{random.randrange(1000)}'),
+            ('red', f'{56 + random.randrange(200)}'),
+            ('green', f'{56 + random.randrange(200)}'),
+            ('blue', f'{56 + random.randrange(200)}'),
+        ])
+    )
+
+vs.render(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=60,
+    out_height=200,
+)
+</pre>
+
+<center><img src="confetti.gif"></center>
+
+
+</td></tr></table>
+<br><br><br><br>
+</body>
+</html>
