@@ -238,6 +238,8 @@ class Block():
 class BlockCircle(Block):
     def __init__(self) -> None:
         super().__init__('circle', -1, [])
+        self.params['from'] = 0.
+        self.params['to'] = 1.
         self.params['red'] = 255.
         self.params['green'] = 128.
         self.params['blue'] = 128.
@@ -248,12 +250,24 @@ class BlockCircle(Block):
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
-        t = cast(float, locals['thickness'])
+        thickness = cast(float, locals['thickness'])
         d = x * x + y * y
-        if (50. - t) * (50. - t) <= d < 2500.:
-            return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
-        else:
-            return [TOO_FAR, 0., 0., 0., 0.]
+        if (50. - thickness) * (50. - thickness) <= d < 2500.:
+            _from = cast(float, locals['from'])
+            _to = cast(float, locals['to'])
+            if math.fabs(_to - _from) >= 1.:
+                return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
+            if _to < _from:
+                _from, _to = _to, _from
+            adj = -math.floor(_from + 0.5)
+            _from += adj
+            _to += adj
+            theta = (math.atan2(y, x) / (2.0 * math.pi))
+            if _from < theta <= _to:
+                return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
+            elif _to > 0.5 and theta < _to - 1.:
+                return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
+        return [TOO_FAR, 0., 0., 0., 0.]
 
 class BlockSquare(Block):
     def __init__(self) -> None:

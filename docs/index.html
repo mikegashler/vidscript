@@ -96,9 +96,9 @@
 from vidscript import vs
 
 script = vs.parse('''
-video
+<font color="blue">video
     label
-        text = Hello world!
+        text = Hello world!</font>
 ''')
 
 vs.render_gui(script,
@@ -110,7 +110,9 @@ vs.render_gui(script,
 </pre>
 
 <p>
-    Save it as "hello.py", then execute it:
+    The black part is Python. The blue part is VidScript.
+    (It's like a language within a language.)
+    Save this file as "hello.py", then execute it:
 </p>
 
 <pre class="code">
@@ -531,7 +533,9 @@ video
 <ul>
     <li>circle
         <div class="indent">
-            thickness = 50
+            thickness = 50<br>
+            from = 0<br>
+            to = 1
         </div>
     </li>
     <li>square
@@ -591,8 +595,8 @@ video
     <li><b>vskey</b> = vertically skews the part.</li>
     <li><b>rot</b> = rotates the part. (specified as number of turns in counter-clockwise direction.)</li>
     <li><b>red</b> = specify red channel (from 0 to 256)</li>
-    <li><b>green</b> = specify red channel (from 0 to 256)</li>
-    <li><b>blue</b> = specify red channel (from 0 to 256)</li>
+    <li><b>green</b> = specify green channel (from 0 to 256)</li>
+    <li><b>blue</b> = specify blue channel (from 0 to 256)</li>
     <li><b>opacity</b> = adjust the opacity of the object (from 0 to 1)</li>
     <li><b>cloak</b> = makes object invisible and cloak siblings when value is negative</li>
     <li><b>beg</b> = indicates when a part comes into existence (relative to the time of its outer type)</li>
@@ -647,6 +651,64 @@ video
 	<li><b>tanh</b> = hyperbolic tangent</li>
     <li><b>trans</b> = trans(a, b, x, y) returns x if a &lt; -b/2, y if a &gt; b/2, and interpolates if a is somewhere in between</li>
 </ul>
+
+<p>
+    Here is an example that uses circles to make an animated pie chart:
+</p>
+
+<pre class="code">
+moving_slice
+    circle
+        scale = 6
+        red = 200
+        green = 100
+        blue = 100
+        from = 0
+        to = .32
+        z = -1
+
+video
+    square    # background
+        scale=100
+        z=-1000
+        red=0
+        green=0
+        blue=60
+    moving_slice
+        x = max(0, 50 * sn(t))
+        y = max(0, 80 * sn(t))
+    circle
+        scale = 6
+        red = 200
+        green = 200
+        blue = 50
+        from = .32
+        to = .5
+    circle
+        scale = 6
+        red = 50
+        green = 100
+        blue = 50
+        from = .5
+        to = .7
+    circle
+        scale = 6
+        red = 50
+        green = 200
+        blue = 200
+        from = .7
+        to = .8
+    circle
+        scale = 6
+        red = 100
+        green = 100
+        blue = 200
+        from = .8
+        to = 1
+</pre>
+
+<center><img src="pie.gif"></center>
+
 
 
 
