@@ -118,24 +118,16 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         if 'sid' in brownie:
             session_id = brownie['sid'].value
         else:
-            # The XHR specification forbids clients from setting 'Cookie',
-            # so we work around that with 'Brownie' instead.
             cookie = SimpleCookie(self.headers.get('Cookie')) # type: ignore
             if 'sid' in cookie:
                 session_id = cookie['sid'].value
             else:
-                raise ValueError('No cookie in POST with uploaded file.')
-        session = get_or_make_session(session_id, ip_address)
+                session_id = new_session_id()
+                # print(f'No session id. Making new one.')
+        session = get_or_make_session(new_session_id(), ip_address)
 
         upload_file_type = 'multipart/form-data'
-        if filename == 'receive_image.html':
-            response = simpleWebServerPages[filename]({}, session)
-            ajax_params = {}
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(bytes(response, 'utf8'))
-        elif 'Content-Type' in self.headers and self.headers.get('Content-Type')[:len(upload_file_type)] == upload_file_type:
+        if 'Content-Type' in self.headers and self.headers.get('Content-Type')[:len(upload_file_type)] == upload_file_type:
             act = self.headers.get('Act') # An action specifying what to do with this image
             t = datetime.now()
             fn = f'{session_id}_{t.year:04}-{t.month:02}-{t.day:02}_{t.hour:02}-{t.minute:02}-{t.second:02}-{t.microsecond:06}.jpeg'

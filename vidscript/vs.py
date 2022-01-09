@@ -1,55 +1,27 @@
-from typing import Mapping, Any, Dict, List, Optional, Callable
+from typing import Mapping, Any, Dict, List, Optional, Callable, Tuple, cast
 import threading
 import queue
 import os
 import sys
 import traceback
 from PIL import Image
+import requests
 import signal
 from . import renderer, parse_script, webserver, Script
 
 RenderCallback = Callable[[int, int, int, int, int], None]
 SaveFrameCallback = Callable[[str, str, int, Image.Image], None]
 
-init_vals:Optional[Mapping[str,Any]] = None
+init_vals:Dict[str,Any] = {}
 jobs_done:List[str] = []
-now_rendering_frame = -1
-now_rendering_row = 0
-render_errors = []
+completed_row_count = 0
+completed_rows:List[bool] = []
+render_errors:List[str] = []
+script_to_render:Script = Script()
 worker_thread_started = False
 task_queue:"queue.Queue[RenderTask]" = queue.Queue()
 keep_working = True
-
-class RenderTask():
-    def __init__(self, frame_renderer:Optional[renderer.FrameRenderer], y:int, filename:str) -> None:
-        self.frame_renderer = frame_renderer
-        self.y = y
-        self.filename = filename
-
-    def process(self) -> None:
-        global now_rendering_frame
-        global now_rendering_row
-        global jobs_done
-        if self.frame_renderer is None:
-            return
-        now_rendering_frame = self.frame_renderer.frame
-        now_rendering_row = self.y
-        self.frame_renderer.render_row(self.y)
-        if self.y + 1 == self.frame_renderer.hgt:
-            self.frame_renderer.image.save(self.filename)
-            jobs_done.append(self.filename)
-            now_rendering_frame = -1
-
-def worker_thread() -> None:
-    while keep_working:
-        task:RenderTask = task_queue.get()
-        try:
-            task.process()
-        except Exception as e:
-            task_queue.queue.clear()
-            render_errors.append(str(e))
-            print(e)
-        task_queue.task_done()
+frame_renderers:Dict[int, renderer.FrameRenderer] = {}
 
 def do_index(query:Mapping[str, Any], session:webserver.Session) -> str:
     s = [
@@ -201,16 +173,6 @@ function request_updates() {
             if (response.err !== undefined) {
                 alert(response.err);
             }
-            if (response.init !== undefined) {
-                // document.getElementById('video_obj').value = response.init.video_obj;
-                // document.getElementById('frame_count').value = response.init.frame_count;
-                // document.getElementById('beg').value = response.init.beg;
-                // document.getElementById('end').value = response.init.end;
-                // document.getElementById('in_width').value = response.init.in_width;
-                // document.getElementById('in_height').value = response.init.in_height;
-                // document.getElementById('out_height').value = response.init.out_height;
-                // document.getElementById('filename').value = response.init.script_name;
-            }
         },
         function(error) {
             alert(error);
@@ -243,98 +205,59 @@ let timer = setInterval(function() { request_updates(); }, 500);
     ]
     return ''.join(s)
 
-def do_gui() -> None:
-    # signal.signal(signal.SIGINT, signal_handler) # Register signal_handler to respond to Ctrl-C
-    webserver.SimpleWebServer.render({
-        '': do_index,
-        'ajax.html': do_ajax,
-        'index.html': do_index,
-    })
-
-def launch_rendering(
-    all_blocks:Dict[str,renderer.Block],
-    render_params:Dict[str,Any],
-) -> Dict[str, Any]:
-    global worker_thread_started
-    global init_vals
-
-    # Find the clip and frame ranges
-    clip = renderer.find_block(render_params['video_obj'], all_blocks)
-    if clip is None:
-        return {
-            'error': 'Bad arguments: No object named "{video_obj}"',
-        }
-    beg, end = render_params['beg'], render_params['end']
-    if end < 0 or end > render_params['frame_count']:
-        end = render_params['frame_count']
-    if beg < 0 or beg >= end:
-        beg = 0
-    init_vals = render_params
-
-    # Make the destination folder if needed
-    script_base = os.path.splitext(os.path.basename(render_params['script_name']))[0]
-    out_folder = os.path.join(script_base, render_params['video_obj'])
-    if not os.path.isdir(out_folder):
-        os.makedirs(out_folder)
-
-    # Make sure the worker thread has been started
-    if not worker_thread_started:
-        print('(Press Ctrl-C twice to quit.)')
-        worker_thread_started = True
-        threading.Thread(target=worker_thread).start()
-
-    # Make the rendering jobs
-    for frame in range(beg, end):
-        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, render_params['frame_count'], render_params['out_height'], render_params['in_width'], render_params['in_height'])
-        dest_filename = f'{out_folder}/f{frame:07}.png'
-        for y in range(frame_renderer.hgt):
-            task_queue.put(RenderTask(frame_renderer, y, dest_filename))
-    return { 'msg': 'started' }
-
-def do_ajax(query:Mapping[str, Any], session:webserver.Session) -> Dict[str, Any]:
-    global jobs_done
-    global init_vals
-    action = query['action']
-    if action == 'get_updates':
-        jobs_done, tmp = [], jobs_done
-        packet = {
-            'done': tmp,
-            'frame': now_rendering_frame,
-            'row': now_rendering_row,
-        }
-        if len(render_errors) > 0:
-            packet['err'] = render_errors[0]
-            del render_errors[0]
-        if init_vals is not None:
-            packet['init'] = init_vals
-            init_vals = None
-        return packet
-    elif action == 'stop':
-        task_queue.queue.clear()
-        return { 'msg': 'ack' }
-    elif action == 'shutdown':
-        keep_working = False
-        task_queue.queue.clear()
-        task_queue.put(RenderTask(None, 0, '')) # No-op to flush out any threads waiting on the queue
-        # task_queue.join()
-
-        # Exit
-        print('\nGoodbye.')
-        sys.exit(0)
-        # return { 'msg': 'ack' }
-    else:
-        return { 'error': f'unrecognized action: {action}' }
-
 # def signal_handler(sig:int, frame) -> None: # type: ignore
 #     # Join with the worker thread
 #     keep_working = False
 #     task_queue.queue.clear()
-#     task_queue.put(RenderTask(None, 0, ''))
+#     task_queue.put(RenderTask(None, 0, '', 0))
 #     # task_queue.join()
 #
 #     # Exit
 #     print('\nGoodbye.')
 #     sys.exit(0)
+
+
+
+
+
+
+
+
+class RenderTask():
+    def __init__(self, frame_renderer:Optional[renderer.FrameRenderer], y:int, filename:str, beg:int) -> None:
+        self.frame_renderer = frame_renderer
+        self.y = y
+        self.filename = filename
+        self.beg = beg
+
+    def process(self) -> None:
+        global jobs_done
+        global completed_rows
+        global completed_row_count
+        if self.frame_renderer is None:
+            return
+        self.frame_renderer.render_row(self.y)
+
+        # Advance the completed rows
+        completed_index = (self.frame_renderer.frame - self.beg) * self.frame_renderer.hgt + self.y
+        completed_rows[completed_index] = True
+        prev_completed_row_count = completed_row_count
+        while completed_row_count < len(completed_rows) and completed_rows[completed_row_count]:
+            completed_row_count += 1
+            if completed_row_count % self.frame_renderer.hgt == 0:
+                self.frame_renderer.image.save(self.filename)
+                jobs_done.append(self.filename)
+
+def worker_thread() -> None:
+    while keep_working:
+        task:RenderTask = task_queue.get()
+        try:
+            task.process()
+        except Exception as e:
+            traceback.print_exc()
+            task_queue.queue.clear()
+            render_errors.append(str(e))
+        task_queue.task_done()
 
 def render_gui(
     script:Script,
@@ -347,24 +270,151 @@ def render_gui(
     beg:int=0,
     end:int=-1,
 ) -> None:
-    retval = launch_rendering(
-        script.to_blocks(),
-        {
-            'script_name': script_name,
-            'video_obj': video_obj,
-            'frame_count': frame_count,
-            'out_height': out_height,
-            'in_width': in_width,
-            'in_height': in_height,
-            'beg': beg,
-            'end': end,
+    global worker_thread_started
+    global init_vals
+    global script_to_render
+    global completed_rows
+    global frame_renderers
+
+    # signal.signal(signal.SIGINT, signal_handler) # Register signal_handler to respond to Ctrl-C
+
+    # Find the clip and frame ranges
+    all_blocks = script.to_blocks()
+    clip = renderer.find_block(video_obj, all_blocks)
+    if clip is None:
+        raise ValueError(f'Bad arguments: No object named "{video_obj}"')
+    if end < 0 or end > frame_count:
+        end = frame_count
+    if beg < 0 or beg >= end:
+        beg = 0
+
+    # Values to pass to the front end
+    init_vals = {
+        'script_name': script_name,
+        'video_obj': video_obj,
+        'frame_count': frame_count,
+        'out_height': out_height,
+        'in_width': in_width,
+        'in_height': in_height,
+        'beg': beg,
+        'end': end,
+    }
+
+    # Values to pass to the render thread
+    completed_rows = [False] * (end - beg) * out_height
+    script_to_render = script
+
+    # Make the destination folder if needed
+    script_base = os.path.splitext(os.path.basename(script_name))[0]
+    out_folder = os.path.join(script_base, video_obj)
+    if not os.path.isdir(out_folder):
+        os.makedirs(out_folder)
+
+    # Make sure the worker thread has been started
+    if worker_thread_started:
+        task_queue.queue.clear()
+        frame_renderers = {}
+    else:
+        print('(Press Ctrl-C twice to quit.)')
+        worker_thread_started = True
+        threading.Thread(target=worker_thread).start()
+
+    # Make the rendering jobs
+    for frame in range(beg, end):
+        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, frame_count, out_height, in_width, in_height)
+        frame_renderers[frame] = frame_renderer
+        dest_filename = f'{out_folder}/f{frame:07}.png'
+        for y in range(frame_renderer.hgt):
+            task_queue.put(RenderTask(frame_renderer, y, dest_filename, beg))
+
+    # Launch the GUI
+    webserver.SimpleWebServer.render({
+        '': do_index,
+        'ajax.html': do_ajax,
+        'index.html': do_index,
+    })
+
+def do_ajax(query:Mapping[str, Any], session:webserver.Session) -> Dict[str, Any]:
+    global jobs_done
+    global init_vals
+    global completed_row_count
+    global keep_working
+    action = query['action']
+    if action == 'get_updates':
+        jobs_done, tmp = [], jobs_done
+        if 'beg' in init_vals and 'out_height' in init_vals:
+            hgt = init_vals['out_height']
+            beg = init_vals['beg']
+            completed_frame = hgt * beg + completed_row_count // hgt
+            completed_row = completed_row_count % hgt
+        else:
+            raise ValueError('init_vals should be set before the gui is started')
+        packet = {
+            'done': tmp,
+            'frame': completed_frame,
+            'row': completed_row,
         }
-    )
-    if 'error' in retval:
-        if 'stack' in retval:
-            print(retval['stack'])
-        raise ValueError(retval['error'])
-    do_gui()
+        if len(render_errors) > 0:
+            packet['err'] = render_errors[0]
+            del render_errors[0]
+        return packet
+    elif action == 'stop':
+        task_queue.queue.clear()
+        return { 'msg': 'ack' }
+    elif action == 'shutdown':
+        keep_working = False
+        task_queue.queue.clear()
+        task_queue.put(RenderTask(None, 0, '', 0)) # No-op to flush out any threads waiting on the queue
+        # task_queue.join()
+
+        # Exit
+        print('\nGoodbye.')
+        sys.exit(0)
+        # return { 'msg': 'ack' }
+    elif action == 'worker': # A worker wants a task
+        if 'results' in query:
+            # Receive results
+            frame = query['frame']
+            y = query['y']
+            results = query['results']
+            frame_renderer = frame_renderers[frame]
+            img = frame_renderer.image
+            assert img.size[1] > y and img.size[0] == len(results), f'Results do not match expectations. Expected {img.shape}. Got {len(results)},{len(results[0]) if len(results) > 0 else 0}'
+            for x in range(img.size[0]):
+                img.putpixel((x, y), tuple(results[x]))
+
+        # Grab the next job
+        if not keep_working:
+            return {} # All done
+        task:RenderTask = task_queue.get()
+        task_queue.task_done() # Ideally, we should wait until the task is really done to do this, but meh.
+        response:Dict[str,Any] = {}
+
+        # If there are no more jobs to do
+        if task.frame_renderer is None:
+            keep_working = False
+            try:
+                task_queue.queue.clear()
+            except Exception as e:
+                traceback.print_exc()
+            return response # No more jobs to do
+
+        # If this is a brand new worker
+        if not 'results' in query:
+            # Send the whole script to render
+            response['script'] = str(script_to_render)
+
+        # Give the worker another row to render
+        response['video_obj'] = init_vals['video_obj']
+        response['frame'] = task.frame_renderer.frame
+        response['frame_count'] = task.frame_renderer.frame_count
+        response['out_height'] = task.frame_renderer.hgt
+        response['in_width'] = task.frame_renderer.in_width
+        response['in_height'] = task.frame_renderer.in_height
+        response['y'] = task.y
+        return response
+    else:
+        return { 'error': f'unrecognized action: {action}' }
 
 def defaultRenderCallback(beg:int, end:int, frame:int, out_height:int, y:int) -> None:
     if y % 10 == 0: # Don't waste time updating too often
@@ -439,3 +489,45 @@ def parse(script:str, start_line:int=-1) -> Script:
         start_line = int(sys._getframe(1).f_lineno) # Get the line number of the caller
     lines = script.split('\n')
     return parse_script(lines, start_line)
+
+def worker(server_url:str='http://localhost:8986/ajax.html') -> None:
+    # Tell the server we are ready to work
+    all_blocks:Dict[str,renderer.Block] = {}
+    payload:Dict[str,Any] = {
+        'action': 'worker',
+    }
+    req = requests.post(server_url, json=payload)
+
+    # Parse the script from the server
+    response = req.json()
+    print('---script---')
+    print(response['script'])
+    script = parse(response['script'])
+    all_blocks = script.to_blocks()
+    clip = renderer.find_block(response['video_obj'], all_blocks)
+    if clip is None:
+        raise ValueError('Bad arguments: No object named "{video_obj}"')
+
+    # Start rendering
+    while True:
+        if not 'y' in response:
+            break # The server has no row for us to render, so we're done
+
+        # Render the specified row of pixels
+        frame_renderer = renderer.FrameRenderer(clip, all_blocks, response['frame'], response['frame_count'], response['out_height'], response['in_width'], response['in_height'])
+        frame_renderer.render_row(response['y'])
+
+        # Convert to an array of ints
+        results:List[Tuple[int,int,int,int]] = []
+        for x in range(frame_renderer.image.size[0]):
+            results.append(frame_renderer.image.getpixel((x, 0)))
+
+        # Send back to the server (who is acting as master)
+        payload = {
+            'action': 'worker',
+            'frame': response['frame'], # Tell the server which frame we just rendered
+            'y': response['y'], # Tell the server which row we just rendered
+            'results': results, # Send the row of pixels back to the server
+        }
+        req = requests.post(server_url, json=payload)
+        response = req.json()

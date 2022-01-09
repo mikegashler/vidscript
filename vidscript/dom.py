@@ -208,7 +208,7 @@ class Type():
         raise ValueError(f'{self.name} has no local variable named {name}')
 
     def __str__(self) -> str:
-        return f'{self.name} ' + ' '.join([str(param) for param in self.param_list]) + '\n' + ''.join([(f'{str(part)}' if isinstance(part, Part) else f'    {str(part)}\n') for part in self.part_list])
+        return f'{self.name} ' + ' '.join([f'{param[0]}={param[1]}' for param in self.param_list]) + '\n' + ''.join([(f'{str(part)}' if isinstance(part, Part) else f'    {part[0]} = {part[1]}\n') for part in self.part_list])
 
     def __repr__(self) -> str:
         return f'Type(name={self.name}, line={self.line_num}, params={repr(self.param_list)})'

@@ -435,9 +435,11 @@ def find_block(name:str, blocks:Dict[str,Block]) -> Optional[Block]:
     return None
 
 class FrameRenderer():
-    def __init__(self, clip:Block, all_blocks:Dict[str,Block], frame:int, frame_count:int, out_height:int, in_width:int, in_height:int) -> None:
+    def __init__(self, clip:Block, all_blocks:Dict[str,Block], frame:int, frame_count:int, out_height:int, in_width:int, in_height:int, one_row:bool=False) -> None:
         self.frame = frame
         self.frame_count = frame_count
+        self.in_width = in_width
+        self.in_height = in_height
         self.wid = (in_width * out_height) // in_height
         self.hgt = out_height
         self.half_wid = self.wid / 2
@@ -445,19 +447,27 @@ class FrameRenderer():
         self.scalar = in_height / out_height
         self.clip = clip
         self.all_blocks = all_blocks
-        self.image = Image.new(mode="RGBA", size=(self.wid, self.hgt))
+        self.one_row = one_row
+        if one_row:
+            self.image = Image.new(mode="RGBA", size=(self.wid, 1))
+        else:
+            self.image = Image.new(mode="RGBA", size=(self.wid, self.hgt))
         self.args = {
             'z': 0.,
             't': frame / frame_count,
         }
 
     def render_row(self, y:int) -> None:
+        if self.one_row:
+            yy = 0
+        else:
+            yy = y
         self.args['y'] = (y - self.half_hgt) * self.scalar
         for x in range(self.wid):
             self.args['x'] = (x - self.half_wid) * self.scalar
             _, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args) # type: ignore
             rgba = (max(0, min(255, int(r))), max(0, min(255, int(g))), max(0, min(255, int(b))), max(0, min(255, int(opacity * 256))))
-            self.image.putpixel((x, self.hgt - 1 - y), rgba)
+            self.image.putpixel((x, self.hgt - 1 - yy), rgba)
 
     def debug_pixel(self, x:int, y:int) -> None:
         self.args['y'] = (y - self.half_hgt) * self.scalar
