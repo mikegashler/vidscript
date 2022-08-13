@@ -106,7 +106,7 @@ class ExprStr(Expr):
 
 class ExprExponent(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
-        return self.p[0].eval(locals) ** self.p[1].eval(locals)
+        return float(self.p[0].eval(locals) ** self.p[1].eval(locals))
 
 class ExprMultiply(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
@@ -114,7 +114,8 @@ class ExprMultiply(Expr):
 
 class ExprDivide(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
-        return self.p[0].eval(locals) / self.p[1].eval(locals)
+        denom = self.p[1].eval(locals)
+        return self.p[0].eval(locals) / denom if denom != 0 else 0.000000001
 
 class ExprModulus(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
