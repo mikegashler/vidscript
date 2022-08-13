@@ -62,6 +62,7 @@
 
 <h3>Table of Contents</h3>
 <ol>
+    <li><a href="#start">Get started</a></li>
 	<li><a href="#hello">Hello World!</a></li>
 	<li><a href="#animating">Animating</a></li>
     <li><a href="#types">Types, parameters, and arguments</a></li>
@@ -80,7 +81,18 @@
 
 
 
+<a id='start'></a><h3>Get started</h3>
 
+<p>To get started, you'll need the VidScript code.
+So open a shell and enter the command:</p>
+
+<pre class="code">
+git clone git@github.com:mikegashler/vidscript.git
+</pre>
+
+<p>(If you are not already familiar with git or shells or python,
+you'll probably need to ramp up on those topics before you proceed with this tutorial. Sorry.)
+</p>
 
 
 
@@ -89,7 +101,7 @@
 <a id='hello'></a><h3>Hello World</h3>
 
 <p>
-    To get started, please paste the following code into your favorite text editor:
+    To render your first frame, please paste the following code into your favorite text editor:
 </p>
 
 <pre class="code">
@@ -112,12 +124,17 @@ vs.render_gui(script,
 <p>
     The black part is Python. The blue part is VidScript.
     (It's like a language within a language.)
-    Save this file as "hello.py", then execute it:
+    Save this file in the vidscript folder that you just created.
+    (There should already be a file there named "font.png", which this script depends on.)
+    Let's call your new file "hello.py".
+    Then, let's execute it:
 </p>
 
 <pre class="code">
 python hello.py
 </pre>
+
+<p>(If your distribution still uses python2 by default, you may need to specify "python3" instead of just "python".)</p>
 
 <p>
     It will render a single frame that looks like this:
@@ -254,7 +271,7 @@ video
 <p>
     Also, you will need to increase frame_count to a larger value. (19 is a good value for now.)
     When you execute the code, the rendered frames will be placed in "hello/video".
-    If you'd like to turn those frames into an animated gif, here is a command to do that:
+    If you'd like to turn those frames into an animated gif, here is an ImageMagick command to do that:
 </p>
 
 <pre class="green">
@@ -267,7 +284,7 @@ convert -delay 10 -loop 0 *.png hello.gif
 convert -delay 10 -loop 0 *.png hello.mp4
 </pre>
 
-<p>(Does ffmpeg compress the videos better than "convert"? todo: investigate.)</p>
+<p>Note the "convert" tool is part of ImageMagick. So you may need to install that first. (Does ffmpeg compress the videos better than "convert"? todo: investigate.)</p>
 
 <p>Anyway, this is what you should get:</p>
 
@@ -323,7 +340,7 @@ video
 <p>
     To do fancier transformations, we'll need to make a separate type for our text part.
     I added a parameter for the rotation amount in <font color="darkorange">orange</font>,
-    I slipped in a comment in <font color="magenta">magenta</font>, and I passed <i>t</i> as an
+    I slipped in a superfluous comment in <font color="magenta">magenta</font>, and I passed <i>t</i> as an
     argument to the part in <font color="red">red</font>.
 </p>
 
@@ -545,11 +562,11 @@ video
     <li>triangle
         <div class="indent">
             x1 = 0<br>
-            y1 = 100<br>
-            x2 = -150 / sqrt(3)<br>
-            y2 = -50<br>
-            x3 = 150 / sqrt(3)<br>
-            y3 = -50
+            y1 = 50<br>
+            x2 = -75 / sqrt(3)<br>
+            y2 = -25<br>
+            x3 = 75 / sqrt(3)<br>
+            y3 = -25
         </div>
     </li>
     <li>label
