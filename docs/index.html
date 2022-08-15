@@ -277,13 +277,13 @@ video
 </p>
 
 <pre class="green">
-convert -delay 10 -loop 0 *.png hello.gif
+convert -delay 10 -loop 0 hello/video/*.png hello.gif
 </pre>
 
 <p>Or, perhaps you might prefer to make an mp4:</p>
 
 <pre class="green">
-convert -delay 10 -loop 0 *.png hello.mp4
+convert -delay 10 -loop 0 hello/video/*.png hello.mp4
 </pre>
 
 <p>Note the "convert" tool is part of ImageMagick. So you may need to install that first. (Does ffmpeg compress the videos better than "convert"? todo: investigate.)</p>

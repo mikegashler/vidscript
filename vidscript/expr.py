@@ -91,7 +91,7 @@ class ExprVariable(Expr):
             raise ValueError(f'Reference error in the expression that begins on line {line}: {self.name} not found')
 
     def __str__(self) -> str:
-        return f'var({self.name})'
+        return f'{self.name}'
 
 class ExprStr(Expr):
     def __init__(self, name:str) -> None:
@@ -108,122 +108,212 @@ class ExprExponent(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return float(self.p[0].eval(locals) ** self.p[1].eval(locals))
 
+    def __str__(self) -> str:
+        return f'({self.p[0]} ^ {self.p[1]})'
+
 class ExprMultiply(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return self.p[0].eval(locals) * self.p[1].eval(locals)
+
+    def __str__(self) -> str:
+        return f'({self.p[0]} * {self.p[1]})'
 
 class ExprDivide(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         denom = self.p[1].eval(locals)
         return self.p[0].eval(locals) / denom if denom != 0 else 0.000000001
 
+    def __str__(self) -> str:
+        return f'({self.p[0]} / {self.p[1]})'
+
 class ExprModulus(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return self.p[0].eval(locals) % self.p[1].eval(locals)
+
+    def __str__(self) -> str:
+        return f'({self.p[0]} % {self.p[1]})'
 
 class ExprAdd(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return self.p[0].eval(locals) + self.p[1].eval(locals)
 
+    def __str__(self) -> str:
+        return f'({self.p[0]} + {self.p[1]})'
+
 class ExprSubtract(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return self.p[0].eval(locals) - self.p[1].eval(locals)
+
+    def __str__(self) -> str:
+        return f'({self.p[0]} - {self.p[1]})'
 
 class ExprAbsolute(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return abs(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'abs({self.p[0]})'
+
 class ExprArcCosine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.acos(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'acos({self.p[0]})'
 
 class ExprArcCosh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.acosh(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'cosh({self.p[0]})'
+
 class ExprArcSine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.asin(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'asin({self.p[0]})'
 
 class ExprArcSinh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.asinh(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'asinh({self.p[0]})'
+
 class ExprArcTan(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.atan(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'atan({self.p[0]})'
 
 class ExprArcTanh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.atanh(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'atanh({self.p[0]})'
+
 class ExprCeil(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return float(math.ceil(self.p[0].eval(locals)))
+
+    def __str__(self) -> str:
+        return f'ceil({self.p[0]})'
 
 class ExprClip(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return max(min(self.p[0].eval(locals), self.p[2].eval(locals)), self.p[1].eval(locals))
 
+    def __str__(self) -> str:
+        return f'clip({self.p[0]}, {self.p[1]}, {self.p[2]})'
+
 class ExprCosine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.cos(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'cos({self.p[0]})'
 
 class ExprCosh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.cosh(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'cosh({self.p[0]})'
+
 class ExprErf(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.erf(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'erf({self.p[0]})'
 
 class ExprFloor(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return float(math.floor(self.p[0].eval(locals)))
 
+    def __str__(self) -> str:
+        return f'floor({self.p[0]})'
+
 class ExprGamma(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.gamma(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'gamma({self.p[0]})'
 
 class ExprLogGamma(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.lgamma(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'lgamma({self.p[0]})'
+
 class ExprLog(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.log(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'log({self.p[0]})'
 
 class ExprMax(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return max([x.eval(locals) for x in self.p])
 
+    def __str__(self) -> str:
+        return f'max({", ".join([str(t) for t in self.p])})'
+
 class ExprMin(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return min([x.eval(locals) for x in self.p])
+
+    def __str__(self) -> str:
+        return f'min({", ".join([str(t) for t in self.p])})'
 
 class ExprSign(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.copysign(1., self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'sign({self.p[0]})'
+
 class ExprSine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.sin(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'sin({self.p[0]})'
 
 class ExprSinh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.sinh(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'sinh({self.p[0]})'
+
 class ExprSqrt(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.sqrt(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'sqrt({self.p[0]})'
 
 class ExprTan(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.tan(self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'tan({self.p[0]})'
+
 class ExprTanh(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.tanh(self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'tanh({self.p[0]})'
 
 class ExprTrans(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
@@ -237,13 +327,22 @@ class ExprTrans(Expr):
             t = 0.5 * math.sin(a * math.pi / b)
             return (0.5 - t) * self.p[2].eval(locals) + (0.5 + t) * self.p[3].eval(locals)
 
+    def __str__(self) -> str:
+        return f'trans({self.p[0]}, {self.p[1]}, {self.p[2]}, {self.p[3]})'
+
 class ExprUnitSine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.sin(2. * math.pi * self.p[0].eval(locals))
 
+    def __str__(self) -> str:
+        return f'sn({self.p[0]})'
+
 class ExprUnitCosine(Expr):
     def eval(self, locals:Dict[str,float]) -> float:
         return math.cos(2. * math.pi * self.p[0].eval(locals))
+
+    def __str__(self) -> str:
+        return f'cs({self.p[0]})'
 
 
 # Each tuple contains: ( operator_name, precedence, argument_count, class )

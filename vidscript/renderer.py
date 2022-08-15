@@ -98,6 +98,14 @@ color_transforms = {
     'cloak': set_cloak,
 }
 
+def ind_print(indent: int, message: str) -> None:
+    for i in range(indent):
+        print('  ', end='')
+    print(message)
+
+def print_locals(indent: int, locals:Dict[str,ParamType]) -> None:
+    for k in locals:
+        ind_print(indent, f'[{k}: {locals[k]}]')
 
 # Represents a part in a block
 class Part():
@@ -113,8 +121,9 @@ class Part():
         if self.block is not None:
             self.block.init_part(self) # Do any special type-specific initialization
 
-    def render_pixel(self, all_blocks:Dict[str,'Block'], locals:Dict[str,ParamType], generics:Dict[str,str]) -> List[float]:
-        # print(f'Entering Part.render_pixel, name={self.type_name},\nlocals={locals}')
+    def render_pixel(self, all_blocks:Dict[str,'Block'], locals:Dict[str,ParamType], generics:Dict[str,str], depth:int) -> List[float]:
+        if depth >= 0 and len(self.type_name) > 0:
+            ind_print(2 * depth + 1, f'part {self.type_name}')
         block = self.block
         if block is None:
             if len(self.type_name) == 0:
@@ -134,6 +143,8 @@ class Part():
             inner_locals[p] = block.generics[p]
         xyzt = [ cast(float, locals['x']), cast(float, locals['y']), cast(float, locals['z']), cast(float, locals['t']) ]
         for argname, argexpr in reversed(self.args_pre):
+            if depth >= 0:
+                ind_print(2 * depth + 2, f'{argname} = {str(argexpr)}')
             if argname in affine_transforms:
                 affine_transforms[argname](xyzt, argexpr.eval(cast(Dict[str,float], locals)))
             else:
@@ -143,14 +154,15 @@ class Part():
         inner_locals.update(generics)
 
         # Render the block
-        # print(f'Calling Block.render_pixel, name={block.name}, locals={inner_locals}')
-        drgba = block.render_pixel(self, all_blocks, inner_locals)
+        drgba = block.render_pixel(self, all_blocks, inner_locals, depth + 1)
 
         # Post-process
         for argname, argexpr in self.args_post:
             color_transforms[argname](drgba, argexpr.eval(cast(Dict[str,float], locals)))
 
         # print(f'Returning drgba={drgba}')
+        if depth >= 0 and drgba[0] < TOO_FAR:
+            ind_print(2 * depth + 2, f'dist={drgba[0]} red={drgba[1]} green={drgba[2]} blue={drgba[3]} opacity={drgba[4]}')
         return drgba
 
 
@@ -191,7 +203,11 @@ class Block():
 
     # Returns a distance, red, green, blue, opacity for the specified pixel in the specified frame.
     # (red, green, and blue range from 0-256. Opacity is from 0-1.)
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,"Block"], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,"Block"], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
+
         # Separate out the names containing a dot
         generics:Dict[str, Dict[str,str]] = {}
         condemned:Set[str] = set()
@@ -219,7 +235,7 @@ class Block():
                 end_val = part.end_expr.eval(cast(Dict[str,float], locals))
             if beg_val <= t < end_val:
                 locals['t'] = (t - beg_val) / (end_val - beg_val)
-                pix = part.render_pixel(blocks, locals, generics[part.type_name] if part.type_name in generics else {})
+                pix = part.render_pixel(blocks, locals, generics[part.type_name] if part.type_name in generics else {}, depth)
                 if pix[0] < TOO_FAR:
                     pixels.append(pix)
         locals['t'] = t # Restore the original t value so locals can be reused for the next pixel
@@ -232,7 +248,8 @@ class Block():
                 return pixels[0]
         else:
             pix = combine_pixels(pixels)
-            # print(f'pixels={pixels}, returning3 {pix}')
+            if depth >= 0:
+                ind_print(2 * depth, f'combined {len(pixels)} pixels to dist={pix[0]} red={pix[1]} green={pix[2]} blue={pix[3]} opacity={pix[4]}')
             return pix
 
 class BlockCircle(Block):
@@ -246,7 +263,10 @@ class BlockCircle(Block):
         self.params['thickness'] = 50.
         self.params['opacity'] = 1.
 
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
@@ -264,9 +284,15 @@ class BlockCircle(Block):
             _to += adj
             theta = (math.atan2(y, x) / (2.0 * math.pi))
             if _from < theta <= _to:
+                if depth >= 0:
+                    ind_print(2 * depth, f'hit!')
                 return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
             elif _to > 0.5 and theta < _to - 1.:
+                if depth >= 0:
+                    ind_print(2 * depth, f'hit!')
                 return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
+        if depth >= 0:
+            ind_print(2 * depth, f'miss')
         return [TOO_FAR, 0., 0., 0., 0.]
 
 class BlockSquare(Block):
@@ -277,13 +303,20 @@ class BlockSquare(Block):
         self.params['blue'] = 128.
         self.params['opacity'] = 1.
 
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
         if x >= -50. and x < 50. and y >= -50. and y < 50.:
+            if depth >= 0:
+                ind_print(2 * depth, f'hit!')
             return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
         else:
+            if depth >= 0:
+                ind_print(2 * depth, f'miss')
             return [TOO_FAR, 0., 0., 0., 0.]
 
 def side(x:float, y:float, x2:float, y2:float, x3:float, y3:float) -> float:
@@ -303,7 +336,10 @@ class BlockTriangle(Block):
         self.params['blue'] = 255.
         self.params['opacity'] = 1.
 
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
@@ -319,8 +355,12 @@ class BlockTriangle(Block):
         side1 = (a < 0.) and (b < 0.) and (c < 0.)
         side2 = (a > 0.) and (b > 0.) and (c > 0.)
         if (side1 or side2):
+            if depth >= 0:
+                ind_print(2 * depth, f'hit!')
             return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity'])]
         else:
+            if depth >= 0:
+                ind_print(2 * depth, f'miss')
             return [TOO_FAR, 0., 0., 0., 0.]
 
 class BlockImage(Block):
@@ -345,7 +385,10 @@ class BlockImage(Block):
             im = im.convert('RGBA')
         part.image = im # type: ignore
 
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
@@ -353,9 +396,13 @@ class BlockImage(Block):
         wid, hgt = image.size
         half_wid, half_hgt = wid // 2, hgt // 2
         if x < -half_wid or y < -half_hgt or x >= image.size[0] - half_wid or y >= image.size[1] - half_hgt:
+            if depth >= 0:
+                ind_print(2 * depth, f'miss')
             return [TOO_FAR, 0., 0., 0., 0.]
         else:
             r, g, b, a = image.getpixel((int(x) + half_wid, image.size[1] - 1 - (int(y) + half_hgt)))
+            if depth >= 0:
+                ind_print(2 * depth, f'hit!')
             return [z, float(r), float(g), float(b), a / 256.]
 
 font_starts = [
@@ -401,7 +448,10 @@ class BlockLabel(Block):
         part.half_wid = len(text_offsets) // 2 # type: ignore
         part.half_hgt = part.image.size[1] // 2 # type: ignore
 
-    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType]) -> List[float]:
+    def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,Block], locals:Dict[str,ParamType], depth:int) -> List[float]:
+        if depth >= 0:
+            ind_print(2 * depth, f'type {self.name}')
+            print_locals(2 * depth + 1, locals)
         x = cast(float, locals['x'])
         y = cast(float, locals['y'])
         z = cast(float, locals['z'])
@@ -410,9 +460,13 @@ class BlockLabel(Block):
         hw = outer_part.half_wid # type: ignore
         hh = outer_part.half_hgt # type: ignore
         if x < -hw or y < -hh or x >= len(toff)-hw or y >= image.size[1]-hh:
+            if depth >= 0:
+                ind_print(2 * depth, f'miss')
             return [TOO_FAR, 0., 0., 0., 0.]
         else:
             gray = image.getpixel((toff[int(x) + hw], image.size[1] - 1 - (int(y) + hh)))
+            if depth >= 0:
+                ind_print(2 * depth, f'hit!')
             return [z, cast(float, locals['red']), cast(float, locals['green']), cast(float, locals['blue']), cast(float, locals['opacity']) * gray]
 
 
@@ -465,15 +519,12 @@ class FrameRenderer():
         self.args['y'] = (y - self.half_hgt) * self.scalar
         for x in range(self.wid):
             self.args['x'] = (x - self.half_wid) * self.scalar
-            _, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args) # type: ignore
+            _, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args, -1000) # type: ignore
             rgba = (max(0, min(255, int(r))), max(0, min(255, int(g))), max(0, min(255, int(b))), max(0, min(255, int(opacity * 256))))
             self.image.putpixel((x, self.hgt - 1 - yy), rgba)
 
     def debug_pixel(self, x:int, y:int) -> None:
         self.args['y'] = (y - self.half_hgt) * self.scalar
         self.args['x'] = (x - self.half_wid) * self.scalar
-        _, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args) # type: ignore
-        print(f'red={r}')
-        print(f'green={g}')
-        print(f'blue={b}')
-        print(f'opacity={opacity}')
+        z, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args, 0) # type: ignore
+        print(f'dist={z} red={r} green={g} blue={b} opacity={opacity}')
