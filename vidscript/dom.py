@@ -1,9 +1,13 @@
-from typing import Union, List, Callable, Dict, Optional, Tuple
+from typing import Union, List, Callable, Dict, Optional, Tuple, Set
 import os
 import sys
 from . import expr, renderer
 
-Arg = Union[Tuple[str,str],Tuple[str,str,int]]
+Arg = Tuple[str,str,int]
+FlexArg = Union[Arg, Tuple[str,str]]
+
+def flexArgToArg(fa:FlexArg) -> Arg:
+    return (fa[0], fa[1], fa[2] if len(fa) > 2 else 0) # type: ignore
 
 # Returns the line number of the caller
 def this_line() -> int:
@@ -52,67 +56,60 @@ def count_leading_spaces(s:str, line_num:int) -> int:
             raise ValueError(f'Error on line {line_num}: Only spaces and tabs are allowed as leading characters. Got ascii char {ord(s[i])}.')
     raise ValueError(f'Error on line {line_num}: Internal error. Only whitespace lines should not reach here.')
 
+# Checks for a '.' operator, suggesting special handling is needed.
+# Otherwise, passes off to expr.parse_expr_str to parse the expression.
 def parse_expr(arg:Arg, all_blocks:Optional[Dict[str,renderer.Block]]=None, enclosing_block:Optional[renderer.Block]=None, resolved_generics:Optional[Dict[str,renderer.Block]]=None) -> expr.Expr:
-    generics:Optional[Dict[str, str]] = enclosing_block.generics if enclosing_block else {}
+    generics:Dict[str, str] = enclosing_block.generics if enclosing_block else {}
     last_dot = arg[0].rfind('.')
     if arg[0] == 'text' or arg[0] == 'filename':
         return expr.ExprStr(arg[1])
-    elif last_dot < 0 and generics is not None and arg[0] in generics:
+    elif last_dot < 0 and arg[0] in generics:
         if resolved_generics is not None and all_blocks is not None:
-            clip = renderer.find_block(arg[1], all_blocks)
-            if clip is None:
-                raise ValueError(f'Error on line {arg[2] if len(arg) > 2 else 0}: Type not found: {arg[1]}') # type: ignore
-            resolved_generics[arg[0]] = clip
+            resolved_generics[arg[0]] = renderer.find_block(arg[1], all_blocks, arg[2])
         return expr.ExprStr(arg[1])
     elif last_dot >= 0 and resolved_generics is not None:
         if arg[0][:last_dot] in resolved_generics:
             inner_enclosing_block = resolved_generics[arg[0][:last_dot]]
             inner_generics = inner_enclosing_block.generics
             if arg[0][last_dot+1:] in inner_generics:
-                assert all_blocks is not None, f'Error on line {arg[2] if len(arg) > 2 else 0}: Internal error' # type: ignore
-                clip = renderer.find_block(arg[1], all_blocks)
-                if clip is None:
-                    raise ValueError(f'Error on line {arg[2] if len(arg) > 2 else 0}: Type not found: {arg[1]}') # type: ignore
-                resolved_generics[arg[0]] = clip
+                assert all_blocks is not None, f'Error on line {arg[2]}: Internal error'
+                resolved_generics[arg[0]] = renderer.find_block(arg[1], all_blocks, arg[2])
                 return expr.ExprStr(arg[1])
             else:
-                return expr.parse_expr_str(arg[1], arg[2] if len(arg) > 2 else 0) # type: ignore
+                return expr.parse_expr_str(arg[1], arg[2])
         else:
-            raise ValueError(f'Error on line {arg[2] if len(arg) > 2 else 0}: Generic type not yet set: {arg[0][:last_dot]}') # type: ignore
+            raise ValueError(f'Error on line {arg[2]}: Generic type not yet set: {arg[0][:last_dot]}')
     else:
-        return expr.parse_expr_str(arg[1], arg[2] if len(arg) > 2 else 0) # type: ignore
+        return expr.parse_expr_str(arg[1], arg[2])
 
 def parse_local_var(arg:Arg, all_blocks:Dict[str,renderer.Block], block:renderer.Block, locals:Dict[str,expr.Expr]) -> renderer.Part:
     if arg[0] in renderer.affine_transforms or arg[0] in renderer.color_transforms:
-        raise ValueError(f'Error on line {arg[2] if len(arg) > 2 else 0}: local variable {arg[0]} conflicts with built-in parameter') # type: ignore
+        raise ValueError(f'Error on line {arg[2]}: local variable {arg[0]} conflicts with built-in parameter. (Either pick a unique name, or put this under some part.)')
     ex = parse_expr(arg)
-    ex.check_variables(arg[2] if len(arg) > 2 else 0, block.params, locals) # type: ignore
+    ex.check_variables(arg[2], block.params, locals)
     locals[arg[0]] = ex
-    return renderer.Part(all_blocks, '', None, None, None, [(arg[0], ex)], [])
+    return renderer.Part(all_blocks, '', [], None, None, [(arg[0], ex)], [])
 
-def check_arg(block:Optional[renderer.Block], name:str, line_num:int) -> None:
-    if block is None:
-        return
-    if name in block.params:
-        return
-    if name in block.generics:
-        return
+def check_arg(blocks:List[renderer.Block], name:str, line_num:int) -> None:
     if name in renderer.affine_transforms:
         return
     if name in renderer.color_transforms:
         return
-    raise ValueError(f'Error on line {line_num}: {block.name if block else "[unknown type]"} has no parameter {name}')
+    for block in blocks:
+        if name in block.params:
+            continue
+        if name in block.generics:
+            continue
+        raise ValueError(f'Error on line {line_num}: {block.name} has no parameter {name}. (If you are trying to declare a new variable, it should be directly within the type, not within a part within the type.)')
 
 class Part():
-    def __init__(self, name:str, arg_list:Optional[List[Arg]]=None, line_num:int=0) -> None:
-        if arg_list is None:
-            arg_list = []
+    def __init__(self, name:str, arg_list:Optional[List[FlexArg]]=None, line_num:int=0) -> None:
         assert len(name) > 0, f'Error on line {line_num}: A Part requires a name'
         for c in name:
             if is_whitespace(c):
                 raise ValueError(f'Error on line {line_num}: names may not contain whitespace')
         self.name = name
-        self.arg_list = arg_list
+        self.arg_list = [] if arg_list is None else [ flexArgToArg(fa) for fa in arg_list ]
         self.line_num = line_num
 
     def add_arg(self, arg:Arg) -> None:
@@ -124,13 +121,18 @@ class Part():
     def __repr__(self) -> str:
         return f'Part(name={self.name},line={self.line_num},args={repr(self.arg_list)})'
 
-    def to_block_part(self, all_blocks:Dict[str,renderer.Block], block:renderer.Block, locals:Dict[str,expr.Expr]) -> renderer.Part:
+    def to_block_part(
+        self,
+        all_blocks:Dict[str,renderer.Block],
+        block:renderer.Block,
+        locals:Dict[str,expr.Expr],
+        generic_bindings:Dict[str,List[renderer.Block]],
+    ) -> renderer.Part:
         # Make sure type exists
-        part_block:Optional[renderer.Block] = None
-        if not (self.name in block.generics):
-            part_block = renderer.find_block(self.name, all_blocks)
-            if part_block is None:
-                raise ValueError(f'Error on line {self.line_num}: Unrecognized block type: "{self.name}"')
+        if self.name in generic_bindings:
+            part_blocks = generic_bindings[self.name]
+        else:
+            part_blocks = [renderer.find_block(self.name, all_blocks, self.line_num)]
 
         # Sort the args into appropriate lists
         expr_beg:Optional[expr.Expr] = None
@@ -139,8 +141,8 @@ class Part():
         args_post:List[Tuple[str,expr.Expr]] = []
         resolved_generics:Dict[str,renderer.Block] = {}
         for arg in self.arg_list:
-            ex = parse_expr(arg, all_blocks, part_block, resolved_generics)
-            line_num = arg[2] if len(arg) > 2 else 0 # type: ignore
+            ex = parse_expr(arg, all_blocks, part_blocks[0] if len(part_blocks) == 1 else None, resolved_generics)
+            line_num = arg[2]
             ex.check_variables(line_num, block.params, locals)
             dotspot = arg[0].rfind('.')
             if arg[0] == 'beg':
@@ -159,27 +161,23 @@ class Part():
                     if not front in resolved_generics:
                         raise ValueError(f'Error on line {self.line_num}: Generic type not yet set: "{front}"')
                     dest_block = resolved_generics[front]
-                    check_arg(dest_block, back, arg[2] if len(arg) > 2 else 0) # type: ignore
+                    check_arg([dest_block], back, arg[2])
                 else:
-                    check_arg(part_block, arg[0], arg[2] if len(arg) > 2 else 0) # type: ignore
+                    check_arg(part_blocks, arg[0], arg[2])
                 args_pre.append((arg[0], ex))
-        return renderer.Part(all_blocks, self.name, part_block, expr_beg, expr_end, args_pre, args_post)
+        return renderer.Part(all_blocks, self.name, part_blocks, expr_beg, expr_end, args_pre, args_post)
 
 
 
 class Type():
-    def __init__(self, name:str, param_list:Optional[List[Arg]]=None, part_list:Optional[List[Union[Part,Arg]]]=None, line_num:int=0) -> None:
-        if param_list is None:
-            param_list = []
-        if part_list is None:
-            part_list = []
+    def __init__(self, name:str, param_list:Optional[List[FlexArg]]=None, part_list:Optional[List[Union[Part,FlexArg]]]=None, line_num:int=0) -> None:
         assert len(name) > 0, f'Error on line {line_num}: A Type requires a name'
         for c in name:
             if is_whitespace(c):
                 raise ValueError(f'Error on line {line_num}: names may not contain whitespace')
         self.name = name
-        self.param_list = param_list
-        self.part_list = part_list
+        self.param_list:List[Arg] = [] if param_list is None else [ flexArgToArg(fa) for fa in param_list ]
+        self.part_list:List[Union[Part,Arg]] = [] if part_list is None else [ p if isinstance(p, Part) else flexArgToArg(p) for p in part_list ]
         self.line_num = line_num
 
     def add_param(self, param:Arg) -> None:
@@ -239,6 +237,21 @@ class Type():
             block.params['end'] = 1.
         return block
 
+def _find_all_generic_bindings(typ:Type, generic_name:str, default_type:str, type_list:List[Type], all_blocks:Dict[str,renderer.Block]) -> List[renderer.Block]:
+    def_block = renderer.find_block(default_type, all_blocks, typ.line_num)
+    bindings:List[renderer.Block] = [def_block]
+    bindings_set:Set[str] = set()
+    bindings_set.add(default_type)
+    for inner_typ in type_list:
+        for inner_part in inner_typ.part_list:
+            if isinstance(inner_part, Part) and inner_part.name == typ.name:
+                for inner_arg in inner_part.arg_list:
+                    if inner_arg[0] == generic_name and not inner_arg[1] in bindings_set:
+                        inner_block = renderer.find_block(inner_arg[1], all_blocks, inner_part.line_num)
+                        bindings_set.add(inner_arg[1])
+                        bindings.append(inner_block)
+    return bindings
+
 class Script():
     def __init__(self, type_list:Optional[List[Type]]=None) -> None:
         if type_list is None:
@@ -257,27 +270,26 @@ class Script():
     def __str__(self) -> str:
         return '\n'.join([str(typ) for typ in self.type_list])
 
+    # This method does the second phase of parsing.
+    # It links all the parts together to prepare for rendering.
     def to_blocks(self) -> Dict[str,renderer.Block]:
         # Create a block for each type
         all_blocks:Dict[str,renderer.Block] = {}
         for typ in self.type_list:
             all_blocks[typ.name] = typ.to_block()
 
-        # Check that the generic parameter default values refer to extant blocks
-        for typ in self.type_list:
-            block = all_blocks[typ.name]
-            for generic_name in block.generics:
-                block_name = block.generics[generic_name]
-                if renderer.find_block(block_name, all_blocks) is None:
-                    raise ValueError(f'Error on line {block.line_num}: {block_name} not found')
-
         # Instantiate the bodies
         for typ in self.type_list:
             block = all_blocks[typ.name]
+
+            # Make a list of all generic instantiations
+            generic_bindings:Dict[str,List[renderer.Block]] = {}
+            for generic_name in block.generics:
+                generic_bindings[generic_name] = _find_all_generic_bindings(typ, generic_name, block.generics[generic_name], self.type_list, all_blocks)
             locals:Dict[str,expr.Expr] = {}
             for part in typ.part_list:
                 if isinstance(part, Part):
-                    block_part = part.to_block_part(all_blocks, block, locals)
+                    block_part = part.to_block_part(all_blocks, block, locals, generic_bindings)
                 else:
                     block_part = parse_local_var(part, all_blocks, block, locals)
                 block.parts.append(block_part)
@@ -294,7 +306,7 @@ def parse_arg(lines:List[str], line_nums:List[int]) -> Arg:
     exp = ltrim(rtrim(s[eq+1:]))
     return name, exp, line_num
 
-def parse_args(lines:List[str], line_nums:List[int]) -> List[Arg]:
+def parse_args(lines:List[str], line_nums:List[int]) -> List[FlexArg]:
     # Test for a line with multiple args on it
     multi_arg_line = False
     if len(lines) == 1:
@@ -306,7 +318,7 @@ def parse_args(lines:List[str], line_nums:List[int]) -> List[Arg]:
             multi_arg_line = True
 
     # Parse all the args
-    args:List[Arg] = []
+    args:List[FlexArg] = []
     if multi_arg_line:
         # Multiple args on one line
         head_col = 0
@@ -358,12 +370,12 @@ def parse_part(lines:List[str], line_nums:List[int]) -> Part:
     arg_list = parse_args(lines[1:], line_nums[1:])
     return Part(name, arg_list, line_nums[0] if len(line_nums) > 0 else 0)
 
-def parse_parts(lines:List[str], line_nums:List[int]) -> List[Union[Part, Arg]]:
+def parse_parts(lines:List[str], line_nums:List[int]) -> List[Union[Part, FlexArg]]:
     if len(lines) < 1:
         return []
     part_indents = count_leading_spaces(lines[0], line_nums[0])
     tail = 0
-    parts:List[Union[Part,Arg]] = []
+    parts:List[Union[Part,FlexArg]] = []
     while True:
         # Find the head and tail of the part or variable
         head = tail

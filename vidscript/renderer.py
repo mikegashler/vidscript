@@ -109,33 +109,35 @@ def print_locals(indent: int, locals:Dict[str,ParamType]) -> None:
 
 # Represents a part in a block
 class Part():
-    def __init__(self, all_blocks:Dict[str,'Block'], type_name:str, block:Optional['Block'], beg_expr:Optional[expr.Expr], end_expr:Optional[expr.Expr], args_pre:List[Tuple[str,expr.Expr]], args_post:List[Tuple[str,expr.Expr]]) -> None:
+    def __init__(self, all_blocks:Dict[str,'Block'], type_name:str, blocks:List['Block'], beg_expr:Optional[expr.Expr], end_expr:Optional[expr.Expr], args_pre:List[Tuple[str,expr.Expr]], args_post:List[Tuple[str,expr.Expr]]) -> None:
         # Make sure it's either a regular part or a local variable
-        assert (len(type_name) > 0) or (len(type_name) == 0 and block is None and len(args_pre) == 1 and len(args_post) == 0)
+        assert (len(type_name) > 0) or (len(type_name) == 0 and len(blocks) == 0 and len(args_pre) == 1 and len(args_post) == 0)
         self.type_name = type_name
-        self.block = block
+        self.blocks = blocks
         self.beg_expr = beg_expr
         self.end_expr = end_expr
         self.args_pre = args_pre
         self.args_post = args_post
-        if self.block is not None:
-            self.block.init_part(self) # Do any special type-specific initialization
+        if len(self.blocks) == 1:
+            self.blocks[0].init_part(self) # Do any special type-specific initialization
 
     def render_pixel(self, all_blocks:Dict[str,'Block'], locals:Dict[str,ParamType], generics:Dict[str,str], depth:int) -> List[float]:
         if depth >= 0 and len(self.type_name) > 0:
             ind_print(2 * depth + 1, f'part {self.type_name}')
-        block = self.block
-        if block is None:
-            if len(self.type_name) == 0:
-                # Local variable
-                name, expr = self.args_pre[0]
-                locals[name] = expr.eval(cast(Dict[str,float], locals))
-                return [TOO_FAR, 0., 0., 0., 0.]
-            else:
-                # Generic type
-                type_name:str = cast(str, locals[self.type_name])
-                block = find_block(type_name, all_blocks)
-                assert block, f'Internal error: Block not found that was previously verified to exist!'
+        if len(self.blocks) == 0:
+            # Local variable
+            name, expr = self.args_pre[0]
+            locals[name] = expr.eval(cast(Dict[str,float], locals))
+            return [TOO_FAR, 0., 0., 0., 0.]
+        elif len(self.blocks) == 1:
+            # Regular part
+            block = self.blocks[0]
+        else:
+            # Generic part
+            type_name:str = cast(str, locals[self.type_name])
+            _block = find_block(type_name, all_blocks, 0)
+            assert _block, f'Internal error: Block not found that was previously verified to exist!'
+            block = _block
 
         # Compute the inner_locals for the callee
         inner_locals = block.params.copy()
@@ -194,7 +196,7 @@ class Block():
         self.name = name
         self.line_num = line_num
         self.params:Dict[str,ParamType] = {}
-        self.generics:Dict[str,str] = {}
+        self.generics:Dict[str,str] = {} # Maps from name to default value
         self.body_lines = body_lines # temporary. Used only while parsing
         self.parts:List[Part] = []
 
@@ -480,13 +482,15 @@ built_in_blocks = {
     'triangle': BlockTriangle(),
 }
 
-def find_block(name:str, blocks:Dict[str,Block]) -> Optional[Block]:
+def find_block(name:str, blocks:Dict[str,Block], line:int) -> Block:
     if name in built_in_blocks:
         return built_in_blocks[name]
     if name in blocks:
         return blocks[name]
-    print(f'{name} not built in or in {blocks.keys()}')
-    return None
+    if line > 0:
+        raise ValueError(f'Error on line {line}: Type not found: {name}')
+    else:
+        raise ValueError(f'Type not found: {name}')
 
 class FrameRenderer():
     def __init__(self, clip:Block, all_blocks:Dict[str,Block], frame:int, frame_count:int, out_height:int, in_width:int, in_height:int, one_row:bool=False) -> None:

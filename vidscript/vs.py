@@ -280,9 +280,7 @@ def render_gui(
 
     # Find the clip and frame ranges
     all_blocks = script.to_blocks()
-    clip = renderer.find_block(video_obj, all_blocks)
-    if clip is None:
-        raise ValueError(f'Bad arguments: No object named "{video_obj}"')
+    clip = renderer.find_block(video_obj, all_blocks, 0)
     if end < 0 or end > frame_count:
         end = frame_count
     if beg < 0 or beg >= end:
@@ -444,9 +442,7 @@ def render(
     saveFrameCallback:SaveFrameCallback=defaultSaveFrameCallback,
 ) -> None:
     all_blocks = script.to_blocks()
-    clip = renderer.find_block(video_obj, all_blocks)
-    if clip is None:
-        raise ValueError('Bad arguments: No object named "{video_obj}"')
+    clip = renderer.find_block(video_obj, all_blocks, 0)
     if end < 0 or end > frame_count:
         end = frame_count
     if beg < 0 or beg >= end:
@@ -478,9 +474,7 @@ def render_debug(
     in_height:int=900
 ) -> None:
     all_blocks = script.to_blocks()
-    clip = renderer.find_block(video_obj, all_blocks)
-    if clip is None:
-        raise ValueError('Bad arguments: No object named "{video_obj}"')
+    clip = renderer.find_block(video_obj, all_blocks, 0)
     frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, frame_count, out_height, in_width, in_height)
     frame_renderer.debug_pixel(output_x, frame_renderer.hgt - 1 - output_y)
 
@@ -504,9 +498,7 @@ def worker(server_url:str='http://localhost:8986/ajax.html') -> None:
     print(response['script'])
     script = parse(response['script'])
     all_blocks = script.to_blocks()
-    clip = renderer.find_block(response['video_obj'], all_blocks)
-    if clip is None:
-        raise ValueError('Bad arguments: No object named "{video_obj}"')
+    clip = renderer.find_block(response['video_obj'], all_blocks, 0)
 
     # Start rendering
     while True:
