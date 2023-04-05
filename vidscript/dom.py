@@ -58,19 +58,29 @@ def count_leading_spaces(s:str, line_num:int) -> int:
 
 # Checks for a '.' operator, suggesting special handling is needed.
 # Otherwise, passes off to expr.parse_expr_str to parse the expression.
-def parse_expr(arg:Arg, all_blocks:Optional[Dict[str,renderer.Block]]=None, enclosing_block:Optional[renderer.Block]=None, resolved_generics:Optional[Dict[str,renderer.Block]]=None) -> expr.Expr:
-    generics:Dict[str, str] = enclosing_block.generics if enclosing_block else {}
+# resolved_generics is an "out" side-effects parameter used when parsing parts with a dot in them
+def parse_expr(
+    arg:Arg,
+    scope_block:Optional[renderer.Block]=None,
+    part_block:Optional[renderer.Block]=None,
+    all_blocks:Optional[Dict[str,renderer.Block]]=None,
+    resolved_generics:Optional[Dict[str,renderer.Block]]=None
+) -> expr.Expr:
+    generics:Dict[str, str] = part_block.generics if part_block else {}
     last_dot = arg[0].rfind('.')
     if arg[0] == 'text' or arg[0] == 'filename':
         return expr.ExprStr(arg[1])
     elif last_dot < 0 and arg[0] in generics:
-        if resolved_generics is not None and all_blocks is not None:
-            resolved_generics[arg[0]] = renderer.find_block(arg[1], all_blocks, arg[2])
-        return expr.ExprStr(arg[1])
+        if scope_block and arg[1] in scope_block.generics: # if the value is a generic parameter
+            return expr.ExprVariable(arg[1])
+        else: # the value must be a block name
+            if resolved_generics is not None and all_blocks is not None:
+                resolved_generics[arg[0]] = renderer.find_block(arg[1], all_blocks, arg[2])
+            return expr.ExprStr(arg[1])
     elif last_dot >= 0 and resolved_generics is not None:
         if arg[0][:last_dot] in resolved_generics:
-            inner_enclosing_block = resolved_generics[arg[0][:last_dot]]
-            inner_generics = inner_enclosing_block.generics
+            inner_part_block = resolved_generics[arg[0][:last_dot]]
+            inner_generics = inner_part_block.generics
             if arg[0][last_dot+1:] in inner_generics:
                 assert all_blocks is not None, f'Error on line {arg[2]}: Internal error'
                 resolved_generics[arg[0]] = renderer.find_block(arg[1], all_blocks, arg[2])
@@ -86,9 +96,9 @@ def parse_local_var(arg:Arg, all_blocks:Dict[str,renderer.Block], block:renderer
     if arg[0] in renderer.affine_transforms or arg[0] in renderer.color_transforms:
         raise ValueError(f'Error on line {arg[2]}: local variable {arg[0]} conflicts with built-in parameter. (Either pick a unique name, or put this under some part.)')
     ex = parse_expr(arg)
-    ex.check_variables(arg[2], block.params, locals)
+    ex.check_variables(arg[2], block.params, locals, block.generics)
     locals[arg[0]] = ex
-    return renderer.Part(all_blocks, '', [], None, None, [(arg[0], ex)], [])
+    return renderer.Part(all_blocks, '', 0, None, None, [(arg[0], ex)], [])
 
 def check_arg(blocks:List[renderer.Block], name:str, line_num:int) -> None:
     if name in renderer.affine_transforms:
@@ -121,18 +131,23 @@ class Part():
     def __repr__(self) -> str:
         return f'Part(name={self.name},line={self.line_num},args={repr(self.arg_list)})'
 
+    # generic_names is a mapping from generic name to default value
+    # type_list is all the types in the whole file
     def to_block_part(
         self,
         all_blocks:Dict[str,renderer.Block],
         block:renderer.Block,
         locals:Dict[str,expr.Expr],
-        generic_bindings:Dict[str,List[renderer.Block]],
+        generic_names:Dict[str,str],
+        type_list:List['Type'],
     ) -> renderer.Part:
         # Make sure type exists
-        if self.name in generic_bindings:
-            part_blocks = generic_bindings[self.name]
+        if self.name in generic_names:
+            part_block:Optional[renderer.Block] = None
+            flavor = 2
         else:
-            part_blocks = [renderer.find_block(self.name, all_blocks, self.line_num)]
+            part_block = renderer.find_block(self.name, all_blocks, self.line_num)
+            flavor = 1
 
         # Sort the args into appropriate lists
         expr_beg:Optional[expr.Expr] = None
@@ -141,9 +156,9 @@ class Part():
         args_post:List[Tuple[str,expr.Expr]] = []
         resolved_generics:Dict[str,renderer.Block] = {}
         for arg in self.arg_list:
-            ex = parse_expr(arg, all_blocks, part_blocks[0] if len(part_blocks) == 1 else None, resolved_generics)
+            ex = parse_expr(arg, block, part_block, all_blocks, resolved_generics)
             line_num = arg[2]
-            ex.check_variables(line_num, block.params, locals)
+            ex.check_variables(line_num, block.params, locals, block.generics)
             dotspot = arg[0].rfind('.')
             if arg[0] == 'beg':
                 expr_beg = ex
@@ -163,9 +178,13 @@ class Part():
                     dest_block = resolved_generics[front]
                     check_arg([dest_block], back, arg[2])
                 else:
+                    if part_block:
+                        part_blocks = [ part_block ]
+                    else:
+                        part_blocks = _find_all_generic_bindings(block, self.name, type_list, all_blocks)
                     check_arg(part_blocks, arg[0], arg[2])
                 args_pre.append((arg[0], ex))
-        return renderer.Part(all_blocks, self.name, part_blocks, expr_beg, expr_end, args_pre, args_post)
+        return renderer.Part(all_blocks, self.name, flavor, expr_beg, expr_end, args_pre, args_post)
 
 
 
@@ -237,19 +256,25 @@ class Type():
             block.params['end'] = 1.
         return block
 
-def _find_all_generic_bindings(typ:Type, generic_name:str, default_type:str, type_list:List[Type], all_blocks:Dict[str,renderer.Block]) -> List[renderer.Block]:
-    def_block = renderer.find_block(default_type, all_blocks, typ.line_num)
+# Produces a list of all the blocks that a generic parameter is ever bound to in the script
+# (Note: This is blind to cases where a generic parameter is set using another generic parameter.)
+def _find_all_generic_bindings(enclosing_block:renderer.Block, generic_name:str, type_list:List[Type], all_blocks:Dict[str,renderer.Block]) -> List[renderer.Block]:
+    default_type = enclosing_block.generics[generic_name]
+    def_block = renderer.find_block(default_type, all_blocks, enclosing_block.line_num)
     bindings:List[renderer.Block] = [def_block]
     bindings_set:Set[str] = set()
     bindings_set.add(default_type)
     for inner_typ in type_list:
         for inner_part in inner_typ.part_list:
-            if isinstance(inner_part, Part) and inner_part.name == typ.name:
+            if isinstance(inner_part, Part) and inner_part.name == enclosing_block.name:
                 for inner_arg in inner_part.arg_list:
                     if inner_arg[0] == generic_name and not inner_arg[1] in bindings_set:
-                        inner_block = renderer.find_block(inner_arg[1], all_blocks, inner_part.line_num)
-                        bindings_set.add(inner_arg[1])
-                        bindings.append(inner_block)
+                        try:
+                            inner_block = renderer.find_block(inner_arg[1], all_blocks, inner_part.line_num)
+                            bindings_set.add(inner_arg[1])
+                            bindings.append(inner_block)
+                        except:
+                            pass # Set using another generic parameter
     return bindings
 
 class Script():
@@ -281,15 +306,10 @@ class Script():
         # Instantiate the bodies
         for typ in self.type_list:
             block = all_blocks[typ.name]
-
-            # Make a list of all generic instantiations
-            generic_bindings:Dict[str,List[renderer.Block]] = {}
-            for generic_name in block.generics:
-                generic_bindings[generic_name] = _find_all_generic_bindings(typ, generic_name, block.generics[generic_name], self.type_list, all_blocks)
             locals:Dict[str,expr.Expr] = {}
             for part in typ.part_list:
                 if isinstance(part, Part):
-                    block_part = part.to_block_part(all_blocks, block, locals, generic_bindings)
+                    block_part = part.to_block_part(all_blocks, block, locals, block.generics, self.type_list)
                 else:
                     block_part = parse_local_var(part, all_blocks, block, locals)
                 block.parts.append(block_part)

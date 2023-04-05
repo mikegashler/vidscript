@@ -5,8 +5,8 @@ import os
 import sys
 import traceback
 from PIL import Image
+import pathlib
 import requests
-import signal
 from . import renderer, parse_script, webserver, Script
 
 RenderCallback = Callable[[int, int, int, int, int], None]
@@ -259,6 +259,23 @@ def worker_thread() -> None:
             render_errors.append(str(e))
         task_queue.task_done()
 
+def defaultRenderCallback(beg:int, end:int, frame:int, out_height:int, y:int) -> None:
+    if y % 10 == 0: # Don't waste time updating too often
+        tot = (end - beg) * out_height
+        pos = (frame - beg) * out_height + y
+        print(f'  {100 * pos / tot:.2f}% (Frame {frame-beg}/{end-beg})', end='\r')
+
+def defaultFilename(script_name:str, video_obj:str, frame:int) -> str:
+    script_base = os.path.splitext(os.path.basename(script_name))[0]
+    folder_name = os.path.join(script_base, video_obj)
+    if not os.path.isdir(folder_name):
+        os.makedirs(folder_name)
+    return os.path.join(folder_name, f'f{frame:07}.png')
+
+def defaultSaveFrameCallback(script_name:str, video_obj:str, frame:int, image:Image) -> None:
+    image.save(defaultFilename(script_name, video_obj, frame))
+    print(f'                            ', end='\r')
+
 def render_gui(
     script:Script,
     script_name:str,
@@ -269,6 +286,12 @@ def render_gui(
     in_height:int=900,
     beg:int=0,
     end:int=-1,
+    passive:bool=True, # unused
+    renderCallback:RenderCallback=defaultRenderCallback, # unused
+    saveFrameCallback:SaveFrameCallback=defaultSaveFrameCallback, # unused
+    frame:int=0, # unused
+    output_x:int=100, # unused
+    output_y:int=100, # unused
 ) -> None:
     global worker_thread_started
     global init_vals
@@ -318,10 +341,10 @@ def render_gui(
         threading.Thread(target=worker_thread).start()
 
     # Make the rendering jobs
-    for frame in range(beg, end):
-        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, frame_count, out_height, in_width, in_height)
-        frame_renderers[frame] = frame_renderer
-        dest_filename = f'{out_folder}/f{frame:07}.png'
+    for frame_index in range(beg, end):
+        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame_index, frame_count, out_height, in_width, in_height)
+        frame_renderers[frame_index] = frame_renderer
+        dest_filename = f'{out_folder}/f{frame_index:07}.png'
         for y in range(frame_renderer.hgt):
             task_queue.put(RenderTask(frame_renderer, y, dest_filename, beg))
 
@@ -414,20 +437,6 @@ def do_ajax(query:Mapping[str, Any], session:webserver.Session) -> Dict[str, Any
     else:
         return { 'error': f'unrecognized action: {action}' }
 
-def defaultRenderCallback(beg:int, end:int, frame:int, out_height:int, y:int) -> None:
-    if y % 10 == 0: # Don't waste time updating too often
-        tot = (end - beg) * out_height
-        pos = (frame - beg) * out_height + y
-        print(f'  {100 * pos / tot:.2f}% (Frame {frame-beg}/{end-beg})', end='\r')
-
-def defaultSaveFrameCallback(script_name:str, video_obj:str, frame:int, image:Image) -> None:
-    script_base = os.path.splitext(os.path.basename(script_name))[0]
-    folder_name = os.path.join(script_base, video_obj)
-    if not os.path.isdir(folder_name):
-        os.makedirs(folder_name)
-    image.save(os.path.join(folder_name, f'f{frame:07}.png'))
-    print(f'                            ', end='\r')
-
 def render(
     script:Script,
     script_name:str,
@@ -438,8 +447,12 @@ def render(
     in_height:int=900,
     beg:int=0,
     end:int=-1,
+    passive:bool=True, # if true, it will render only if they file does not already exist
     renderCallback:RenderCallback=defaultRenderCallback,
     saveFrameCallback:SaveFrameCallback=defaultSaveFrameCallback,
+    frame:int=0, # unused
+    output_x:int=100, # unused
+    output_y:int=100, # unused
 ) -> None:
     all_blocks = script.to_blocks()
     clip = renderer.find_block(video_obj, all_blocks, 0)
@@ -447,18 +460,27 @@ def render(
         end = frame_count
     if beg < 0 or beg >= end:
         beg = 0
-    for frame in range(beg, end):
-        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, frame_count, out_height, in_width, in_height)
+    for frame_index in range(beg, end):
+        if passive:
+            filename = defaultFilename(script_name, video_obj, frame_index)
+            if os.path.exists(filename):
+                continue
+            else:
+                pathlib.Path(filename).touch() # so other passive processes won't try to render this frame while we work on it
+        frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame_index, frame_count, out_height, in_width, in_height)
         for y in range(frame_renderer.hgt):
-            renderCallback(beg, end, frame, out_height, y)
+            renderCallback(beg, end, frame_index, out_height, y)
             frame_renderer.render_row(y)
-        saveFrameCallback(script_name, video_obj, frame, frame_renderer.image)
+        saveFrameCallback(script_name, video_obj, frame_index, frame_renderer.image)
 
     # Print a helpful message
     script_base = os.path.splitext(os.path.basename(script_name))[0]
     folder_name = os.path.join(script_base, video_obj)
     print('Example command to compile the frames into an animated gif:')
     print(f'convert -delay 10 -loop 0 {folder_name}/f*.png {script_base}.gif')
+    print('')
+    print('Example command to compile the frames into a mov:')
+    print(f"ffmpeg -framerate 10 -pattern_type glob -i '{folder_name}/*.png' \-c:v prores -pix_fmt yuva444p10le {script_base}.mov")
 
 # Render a single pixel (as specified in output coordinates, where 0,0 is the top-left pixel) for debugging purposes
 def render_debug(
@@ -467,12 +489,18 @@ def render_debug(
     video_obj:str,
     frame_count:int=10,
     out_height:int=200,
+    in_width:int=1600,
+    in_height:int=900,
+    beg:int=0, # unused
+    end:int=-1, # unused
+    passive:bool=True, # unused
+    renderCallback:RenderCallback=defaultRenderCallback, # unused
+    saveFrameCallback:SaveFrameCallback=defaultSaveFrameCallback, # unused
     frame:int=0,
     output_x:int=100,
     output_y:int=100,
-    in_width:int=1600,
-    in_height:int=900
 ) -> None:
+    print(f'Debugging {script_name}:')
     all_blocks = script.to_blocks()
     clip = renderer.find_block(video_obj, all_blocks, 0)
     frame_renderer = renderer.FrameRenderer(clip, all_blocks, frame, frame_count, out_height, in_width, in_height)

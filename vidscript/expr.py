@@ -53,9 +53,9 @@ class Expr(abc.ABC):
     def eval(self, locals:Dict[str,float]) -> float:
         raise ValueError('Abstract method was called!')
 
-    def check_variables(self, line:int, params:Dict[str,ParamType], locals:Dict[str,'Expr']) -> None:
+    def check_variables(self, line:int, params:Dict[str,ParamType], locals:Dict[str,'Expr'], generics:Dict[str,str]) -> None:
         for p in self.p:
-            p.check_variables(line, params, locals)
+            p.check_variables(line, params, locals, generics)
 
     def __str__(self) -> str:
         s = str(type(self))
@@ -84,8 +84,8 @@ class ExprVariable(Expr):
             raise ValueError(f'Error: Cannot resolve identifier {self.name}')
         return locals[self.name]
 
-    def check_variables(self, line:int, params:Dict[str,ParamType], locals:Dict[str,Expr]) -> None:
-        if self.name in params or self.name in locals:
+    def check_variables(self, line:int, params:Dict[str,ParamType], locals:Dict[str,Expr], generics:Dict[str,str]) -> None:
+        if self.name in params or self.name in locals or self.name in generics or self.name in ['ft']:
             pass
         else:
             raise ValueError(f'Reference error in the expression that begins on line {line}: {self.name} not found')

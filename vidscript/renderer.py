@@ -71,7 +71,7 @@ affine_transforms = {
     'vscale': vscale,
     'hshear': hshear,
     'vshear': vshear,
-    'rot': rotate,
+    'rotate': rotate,
 }
 
 def set_red(drgba:List[float], val:float) -> None:
@@ -109,34 +109,37 @@ def print_locals(indent: int, locals:Dict[str,ParamType]) -> None:
 
 # Represents a part in a block
 class Part():
-    def __init__(self, all_blocks:Dict[str,'Block'], type_name:str, blocks:List['Block'], beg_expr:Optional[expr.Expr], end_expr:Optional[expr.Expr], args_pre:List[Tuple[str,expr.Expr]], args_post:List[Tuple[str,expr.Expr]]) -> None:
+    # flavor: 0=local variable, 1=strongly typed, 2=generic typed
+    def __init__(self, all_blocks:Dict[str,'Block'], type_name:str, flavor:int, beg_expr:Optional[expr.Expr], end_expr:Optional[expr.Expr], args_pre:List[Tuple[str,expr.Expr]], args_post:List[Tuple[str,expr.Expr]]) -> None:
         # Make sure it's either a regular part or a local variable
-        assert (len(type_name) > 0) or (len(type_name) == 0 and len(blocks) == 0 and len(args_pre) == 1 and len(args_post) == 0)
+        assert (len(type_name) > 0) or (len(type_name) == 0 and flavor == 0 and len(args_pre) == 1 and len(args_post) == 0)
         self.type_name = type_name
-        self.blocks = blocks
+        self.flavor = flavor
+        self.block: Optional['Block'] = find_block(type_name, all_blocks, 0) if flavor == 1 else None
         self.beg_expr = beg_expr
         self.end_expr = end_expr
         self.args_pre = args_pre
         self.args_post = args_post
-        if len(self.blocks) == 1:
-            self.blocks[0].init_part(self) # Do any special type-specific initialization
+        if self.block:
+            self.block.init_part(self) # Do any necessary special type-specific initialization (for example, load images, render text, etc.)
 
+    # depth is for debugging only. When it is >= 0, debug output will be produced.
     def render_pixel(self, all_blocks:Dict[str,'Block'], locals:Dict[str,ParamType], generics:Dict[str,str], depth:int) -> List[float]:
         if depth >= 0 and len(self.type_name) > 0:
             ind_print(2 * depth + 1, f'part {self.type_name}')
-        if len(self.blocks) == 0:
+        if self.flavor == 0:
             # Local variable
             name, expr = self.args_pre[0]
             locals[name] = expr.eval(cast(Dict[str,float], locals))
             return [TOO_FAR, 0., 0., 0., 0.]
-        elif len(self.blocks) == 1:
-            # Regular part
-            block = self.blocks[0]
+        elif self.block: # flavor == 1:
+            # strongly typed part
+            block:Block = self.block
         else:
-            # Generic part
+            # generic typed part
             type_name:str = cast(str, locals[self.type_name])
             _block = find_block(type_name, all_blocks, 0)
-            assert _block, f'Internal error: Block not found that was previously verified to exist!'
+            assert _block, f'Internal error: Block not found: {type_name}'
             block = _block
 
         # Compute the inner_locals for the callee
@@ -154,6 +157,7 @@ class Part():
                 inner_locals[argname] = val
         inner_locals['x'], inner_locals['y'], inner_locals['z'], inner_locals['t'] = xyzt
         inner_locals.update(generics)
+        inner_locals['ft'] = locals['ft']
 
         # Render the block
         drgba = block.render_pixel(self, all_blocks, inner_locals, depth + 1)
@@ -205,6 +209,7 @@ class Block():
 
     # Returns a distance, red, green, blue, opacity for the specified pixel in the specified frame.
     # (red, green, and blue range from 0-256. Opacity is from 0-1.)
+    # depth is for debugging only. When it is >= 0, debug output will be produced.
     def render_pixel(self, outer_part:Optional[Part], blocks:Dict[str,"Block"], locals:Dict[str,ParamType], depth:int) -> List[float]:
         if depth >= 0:
             ind_print(2 * depth, f'type {self.name}')
@@ -228,19 +233,25 @@ class Block():
 
         pixels:List[List[float]] = []
         t = cast(float, locals['t'])
+        ft = cast(float, locals['ft'])
         for part in self.parts:
             beg_val = 0.
             end_val = 1.
-            if part.beg_expr is not None:
-                beg_val = part.beg_expr.eval(cast(Dict[str,float], locals))
-            if part.end_expr is not None:
-                end_val = part.end_expr.eval(cast(Dict[str,float], locals))
+            if part.beg_expr is not None or part.end_expr is not None:
+                if part.beg_expr is not None:
+                    beg_val = part.beg_expr.eval(cast(Dict[str,float], locals))
+                if part.end_expr is not None:
+                    end_val = part.end_expr.eval(cast(Dict[str,float], locals))
+                locals['ft'] = ft / max(1e-6, end_val - beg_val)
             if beg_val <= t < end_val:
-                locals['t'] = (t - beg_val) / (end_val - beg_val)
+                locals['t'] = (t - beg_val) / max(1e-6, end_val - beg_val)
                 pix = part.render_pixel(blocks, locals, generics[part.type_name] if part.type_name in generics else {}, depth)
                 if pix[0] < TOO_FAR:
                     pixels.append(pix)
-        locals['t'] = t # Restore the original t value so locals can be reused for the next pixel
+            locals['ft'] = ft
+
+        # Restore the original values so locals can be reused for the next pixel
+        locals['t'] = t
         if len(pixels) == 0:
             return [TOO_FAR, 0., 0., 0., 0.]
         elif len(pixels) == 1:
@@ -513,6 +524,7 @@ class FrameRenderer():
         self.args = {
             'z': 0.,
             't': frame / frame_count,
+            'ft': 1. / frame_count,
         }
 
     def render_row(self, y:int) -> None:
@@ -528,7 +540,7 @@ class FrameRenderer():
             self.image.putpixel((x, self.hgt - 1 - yy), rgba)
 
     def debug_pixel(self, x:int, y:int) -> None:
-        self.args['y'] = (y - self.half_hgt) * self.scalar
+        self.args['y'] = (self.hgt - 1 - y - self.half_hgt) * self.scalar
         self.args['x'] = (x - self.half_wid) * self.scalar
         z, r, g, b, opacity = self.clip.render_pixel(None, self.all_blocks, self.args, 0) # type: ignore
         print(f'dist={z} red={r} green={g} blue={b} opacity={opacity}')

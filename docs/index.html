@@ -26,6 +26,11 @@
     padding-bottom: 5px;
   }
 
+  pre {
+    line-height: 1.2;
+    padding-bottom: 0px;
+  }
+
   a {
     text-decoration: none;
   }
@@ -62,6 +67,7 @@
 
 <h3>Table of Contents</h3>
 <ol>
+    <li><a href="#what">What is it?</a></li>
     <li><a href="#start">Get started</a></li>
 	<li><a href="#hello">Hello World!</a></li>
 	<li><a href="#animating">Animating</a></li>
@@ -74,10 +80,27 @@
     <li><a href="#type_params">Type parameters</a></li>
     <li><a href="#local_vars">Local variables</a></li>
     <li><a href='#timing'>Timing</a></li>
+    <li><a href="#persistence">Persistence</a></li>
     <li><a href='#nonlinear'>Nonlinear transformations</a></li>
     <li><a href="#dom">The Document Object Model</a></li>
 
 </ol>
+
+
+
+
+<a id='what'></a><h3>What is it?</h3>
+
+<p>
+    VidScript is a simple language that lets you describe and render animations.
+    It is used inside of Python.
+    It's really flexible and powerful, but the rendering engine is still pretty slow.
+    (Maybe some day someone will write a faster rendering engine.
+    I just threw this one together in Python.)
+    If you are a programmer and you like the idea of using math to express how object move around and interact, VidScript is for you.
+    If you are an artist who prefers convenient tools with intuitive graphical interfaces, you'll probably hate VidScript.
+    If you are unsure, scroll down and see if you like what you see.
+</p>
 
 
 
@@ -113,7 +136,7 @@ script = vs.parse('''
         text = Hello world!</font>
 ''')
 
-vs.render_gui(script,
+vs.render(script,
     script_name=__file__,
     video_obj='video',
     frame_count=1,
@@ -137,13 +160,13 @@ python hello.py
 <p>(If your distribution still uses python2 by default, you may need to specify "python3" instead of just "python".)</p>
 
 <p>
-    It will render a single frame that looks like this:
+    It will make a file named "hello/video/f0000000.png".
 </p>
 
 <center><img src="hello.png" border="1"></center>
 
 <p>
-    Unfortunately, those words are somewhat hard to see because the video has a transparent background and the words are rather small.
+    Unfortunately, those words are somewhat hard to see because the frame has a transparent background and the words are rather small.
     So let's make it better.
     The code in <font color="blue">blue</font> below adds a dark blue background object.
     And the code in <font color="green">green</font> makes the text bigger.
@@ -165,7 +188,7 @@ video
         <font color="green">scale = 4</font>
 ''')
 
-vs.render_gui(script,
+vs.render(script,
     script_name=__file__,
     video_obj='video',
     frame_count=1,
@@ -173,38 +196,87 @@ vs.render_gui(script,
 )
 </pre>
 
-<p>Now, the frame it renders looks like this:</p>
+<p>
+    If you run your program again, it won't do anything because that frame already exists.
+    But if you delete the "hello" folder and then run your program, it will generate a new frame that looks like this:
+</p>
 
 <center><img src="hello2.png"></center>
 
+<p>Much better!</p>
+
 <p>
-    If you prefer it to just render your frames without opening your web browser to display them,
-    you can omit the "_gui", like this:
-</p>
-
+    It might grow annoying to have to delete the previous renderings every time you want to render it again.
+    So here are a few other options:
+    <ol>
+        <li>
+            You could change the name of your video. For example:
 <pre class="code">
-from vidscript import vs
-
-script = vs.parse('''
-video
+<font color="red">take_2</font>
     square
         scale = 100
         z = -1000
         red = 0
         green = 32
-        blue = 64
+        blue = 64</font>
     label
         text = Hello world!
-        scale = 4
-''')
-
-vs.<font color="red">render</font>(script,
+</pre>
+            You'll also need to change the value of the "video_obj" arg in the render command to match it.
+            This will tell VidScript to put the next rendering in the hello/take_2 folder instead.
+        </li>
+        <li>You could make a shell script. For example:
+<pre class="code">
+#!/bin/bash
+set -e
+rm -rf hello/video
+for i in {2..5}
+do
+    python3 hello.py > /dev/null &
+done
+python3 hello.py
+</pre>
+            Note this script launches 5 processes, so if your video has many frames it will render five times faster!
+            (And that's good because the VidScript renderer is still pretty darn slow.)
+            Obviously, if your computer has a lot of processors, you can change that 5 to some larger value.
+            (If you are familiar with bash scripts, you might notice we pipe the output of the first 4 processes to /dev/null, but not the last one.
+            This is so the five processes don't all fight with each other over who gets to print their progress info to the console.)
+        </li>
+        <li>
+            You could add the "passive=False" argument to tell it to actively re-render all frames:
+<pre class="code">
+vs.render(script,
+    script_name=__file__,
+    video_obj='video',
+    frame_count=1,
+    out_height=200,
+    <font color="red">passive=False</font>,
+)
+</pre>
+            The downside of this approach is that it limits you to just one rendering process at-a-time, so I like the script solution better.
+        </li>
+        <li>
+            You can add "_gui" to the render call, like this:
+<pre class="code">
+vs.render<font color="red">_gui</font>(script,
     script_name=__file__,
     video_obj='video',
     frame_count=1,
     out_height=200,
 )
 </pre>
+            This will tell it to open a graphical user interface in your web browser to help you visualize your frames.
+            (This feature is still a work in progress, so expect some crudeness.)
+            Note that "render_gui" takes the exact same parameters as "render", so you can switch back and forth between them as you desire.<br><br>
+
+            (There's also an option called "<font color="green">render_debug</font>".
+            To use it, you must additionally specify values for "frame", "output_x", and "output_y".
+            It will print all of the math it uses to compute the value for the one pixel you specify.
+            This is useful for debugging when things don't look the way you think they should look.
+            But that's pretty advanced, so maybe don't worry about that until you need it.)
+        </li>
+    </ol>
+</p>
 
 <p>
     If you want to make the rendered frames bigger or smaller,
@@ -221,12 +293,13 @@ vs.<font color="red">render</font>(script,
     <li><b>out_height</b> = '200'. Specifies the size of your frames.</li>
     <li><b>in_width</b> = '1600'. Adjusts internal width coordinates.</li>
     <li><b>in_height</b> = '900'. Adjusts internal height coordinates.</li>
-    <li><b>beg</b> = 0. Speifies the first frame to render.</li>
-    <li><b>end</b> = -1. Specifies which frame to stop rendering at.</li>
+    <li><b>beg</b> = 0. Specifies when in time (from 0 to 1) to begin rendering.</li>
+    <li><b>end</b> = -1. Specifies when in time (from 0 to 1) to stop rendering. (-1 means to the end).</li>
+    <li><b>passive</b> = True. Don't re-render frames that already exist.</li>
     <li><b>renderCallback</b> is called before each line is rendered.
-        The default behavior is to print progress to stdout. (Not available with render_gui)</li>
+        The default behavior is to print progress to stdout.</li>
     <li><b>saveFrameCallback</b> is called after each frame is rendered.
-        The default behavior is to save the frame to a file. (Not available with render_gui)</li>
+        The default behavior is to save the frame to a file.</li>
 </ul>
 
 
@@ -262,6 +335,7 @@ video
 </pre>
 
 <p>
+    The value of t starts at 0 at the start of the video, and gradually increases until it reaches 1 at the frame just past the end of the video.
     Screen coordinates are layed out with the origin in the center.
     The default internal width is 1600 and height is 900, which arranges the coordinates like this:
 </p>
@@ -269,11 +343,23 @@ video
 <center><img src="coords.png"></center>
 
 <p>
-    Also, you will need to increase frame_count to a larger value.
-    (10 is a good value for a quick choppy demo video.
+    You'll want to increase frame_count to a larger value.
+</p>
+
+<pre class="code">
+    vs.render(script,
+        script_name=__file__,
+        video_obj='video',
+        frame_count=<font color="red">10</font>,
+        out_height=200,
+    )
+</pre>
+
+<p>
+    (10 frames will make a quick choppy demo video.
     You can do more frames if you are willing to wait for a nice smooth video to render.)
-    When you execute the code, the rendered frames will be placed in "hello/video".
-    If you'd like to turn those frames into an animated gif, here is an ImageMagick command to do that:
+    Then be sure to delete the your previous rendering and run your code to render the frames.
+    Then, you can turn all those frames into an animated gif using ImageMagick:
 </p>
 
 <pre class="green">
@@ -286,9 +372,15 @@ convert -delay 10 -loop 0 hello/video/*.png hello.gif
 convert -delay 10 -loop 0 hello/video/*.png hello.mp4
 </pre>
 
-<p>Note the "convert" tool is part of ImageMagick. So you may need to install that first. (Does ffmpeg compress the videos better than "convert"? todo: investigate.)</p>
+<p>Unfortunately, ImageMagick doesn't support videos with transparency. To do that, you might use ffmpeg:</p>
 
-<p>Anyway, this is what you should get:</p>
+<pre class="green">
+ffmpeg -framerate 10 -pattern_type glob -i \
+'hello/video/*.png' \-c:v prores \
+-pix_fmt yuva444p10le hello.mov
+</pre>
+
+<p>Anyway, this is what it looks like:</p>
 
 <center><img src="hello1.gif"></center>
 
@@ -322,7 +414,7 @@ video
     label
         text = Hello world!
         scale = 4
-        <font color="red">rot = t</font>
+        <font color="red">rotate = t</font>
 </pre>
 
 <center><img src="hello3.gif"></center>
@@ -350,7 +442,7 @@ video
 mytext <font color="darkorange">r = 0</font>
     label
         text = Hello world!
-        rot = r      <font color="magenta"># rotate it.</font>
+        rotate = r      <font color="magenta"># rotate it.</font>
 
 video
     square  # background
@@ -380,7 +472,7 @@ mytext r = 0
         scale=0.1
     label
         text = Hello world!
-        rot = r      # rotate it.
+        rotate = r      # rotate it.
 
 video
     square  # background
@@ -407,7 +499,7 @@ mytext r = 0
     label
         text = Hello world!
         <font color="red">x = 52</font>
-        rot = r
+        rotate = r
 
 video
     square  # background
@@ -459,7 +551,7 @@ video
         blue = 64
     circle
         <font color="red">hscale = 5
-        rot = 1/8</font>
+        rotate = 1/8</font>
 </pre>
 	</td>
 </tr></table>
@@ -480,7 +572,7 @@ video
         green = 32
         blue = 64
     circle
-        <font color="red">rot = 1/8
+        <font color="red">rotate = 1/8
         hscale = 5</font>
 </pre>
 </pre>
@@ -510,7 +602,7 @@ video
 	Basically, VidScript consists of a bunch of types.
 	Each type has a bunch of parts.
 	And each part has a bunch of arguments.
-	Like this:
+	Here is that same code with annotations to identify all the components:
 </p>
 
 <center><img src="code_parts.png"></center>
@@ -607,12 +699,13 @@ video
     <li><b>y</b> = relative vertical translation</li>
     <li><b>z</b> = specify z-ordering</li>
     <li><b>t</b> = time. Ranges from 0 to 1 over the lifetime of the object.</li>
+    <li><b>ft</b> = frame time. The duration in time units of a single frame. (read only)</li>
     <li><b>scale</b> = scales the part.</li>
     <li><b>hscale</b> = horizontally scales the part.</li>
     <li><b>vscale</b> = vertically scales the part.</li>
     <li><b>hskew</b> = horizontally skews the part.</li>
-    <li><b>vskey</b> = vertically skews the part.</li>
-    <li><b>rot</b> = rotates the part. (specified as number of turns in counter-clockwise direction.)</li>
+    <li><b>vskew</b> = vertically skews the part.</li>
+    <li><b>rotate</b> = rotates the part. (specified as number of turns in counter-clockwise direction.)</li>
     <li><b>red</b> = specify red channel (from 0 to 256)</li>
     <li><b>green</b> = specify green channel (from 0 to 256)</li>
     <li><b>blue</b> = specify blue channel (from 0 to 256)</li>
@@ -776,6 +869,13 @@ video
     <li>Notice my arrow passes these three color values to both child parts. ("red = red", etc.)
         This is necessary because the default square color is green and the default triangle color is blue.
         I want my arrow to be only one solid color.</li>
+    <li>One might naively suppose a line like "red = red" would do nothing.
+        The reason it does something is because you can only read values from higher-level parts,
+        and you can only write values to lower-level parts.
+        So the "red" on the left side of the equal sign refers to the redness of the triangle or square,
+        whereas the "red" on the right side of the equal sign refers to the value passed to the arrow.
+        In VidScript, everything is a directed graph flowing from high-level components to low-level components.
+        There is no way to make any values flow in any kind of circular pathway.</li>
     <li>Notice I made sure the point of my arrow was at the origin.
         This makes sense to me because I imagine that would probably be the user's point of focus.</li>
     <li>Notice to specify the y value of the square I used an expression instead of just a number.
@@ -1126,6 +1226,87 @@ video
     to make sure it looks like you intended.
     Rendering the whole video takes a long time, so you usually want to put that off until the whole project is done.
 </p>
+
+
+
+
+<a id='persistence'></a><h3>Persistence</h3>
+
+<p>
+    Maybe you don't want your objects to disappear when their animation reaches its end.
+    Here's a script that demonstrates how you can make your objects them stick around to the end:
+</p>
+
+<pre class="code">
+bounce_right sub=circle
+    tmp = cos(21 * t) * e^(-8 * t)
+    sub
+        x = -1200 * tmp
+
+bounce_right_and_stay sub=circle
+    bounce_right
+        sub = sub
+        beg = 0
+        end = 15 * ft
+    sub
+        beg = 15 * ft
+        end = 1
+
+accurate
+    label
+        text = Accurate
+        scale = 3
+        red = 255
+        green = 128
+        blue = 128
+
+relevant
+    label
+        text = Relevant
+        scale = 3
+        red = 128
+        green = 255
+        blue = 128
+
+succinct
+    label
+        text = Succinct
+        scale = 3
+        red = 128
+        green = 128
+        blue = 255
+
+video
+    square # background
+        scale = 100
+        z = -1000
+        red = 0
+        green = 32
+        blue = 64
+    bounce_right_and_stay
+        sub = accurate
+        y = 300
+        beg = 0
+    bounce_right_and_stay
+        sub = relevant
+        beg = 0.25
+    bounce_right_and_stay
+        sub = succinct
+        y = -300
+        beg = 0.5
+</pre>
+
+<center><img src="succinct.gif"></center>
+
+<p>
+    The importat type to consider in this video is "bounce_right_and_stay".
+    Notice it has two parts, "bounce_right", and "sub".
+    The "bounce_right" part does the animation.
+    The arg "end = 15 * ft" tells it to make this animation last for 15 frames.
+    The "sub" part just displays whatever thing we are animating.
+    The arg "beg = 15 * ft" tells it to just show that thing when the animation is done.
+</p>
+
 
 
 
@@ -1554,7 +1735,7 @@ script = vs.parse('''
 confetti seed=0 red=255 green=128 blue=128
     circle
         hscale = sin(17 * t + 7 * seed)
-        rot = seed / 1000
+        rotate = seed / 1000
         x = 60 * sin(14 * t + seed)
         y = 420 - 1000 * t
         red = red
