@@ -480,7 +480,7 @@ def render(
     print(f'convert -delay 10 -loop 0 {folder_name}/f*.png {script_base}.gif')
     print('')
     print('Example command to compile the frames into a mov:')
-    print(f"ffmpeg -framerate 10 -pattern_type glob -i '{folder_name}/*.png' \-c:v prores -pix_fmt yuva444p10le {script_base}.mov")
+    print(f"ffmpeg -i {folder_name}/f%07d.png -pix_fmt yuva420p -r 10 {script_base}.webm")
 
 # Render a single pixel (as specified in output coordinates, where 0,0 is the top-left pixel) for debugging purposes
 def render_debug(

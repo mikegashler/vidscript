@@ -524,7 +524,7 @@ class FrameRenderer():
         self.args = {
             'z': 0.,
             't': frame / frame_count,
-            'ft': 1. / frame_count,
+            'ft': 0.01,
         }
 
     def render_row(self, y:int) -> None:

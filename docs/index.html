@@ -94,9 +94,9 @@
 <p>
     VidScript is a simple language that lets you describe and render animations.
     It is used inside of Python.
-    It's really flexible and powerful, but the rendering engine is still pretty slow.
-    (Maybe some day someone will write a faster rendering engine.
-    I just threw this one together in Python.)
+    It's really flexible and powerful, but the rendering engine is still quite slow.
+    I wrote it to produce overlay clips with transparency for my YouTube videos.
+    In theory, you could make entire videos with it, but that would take a long time to render.
     If you are a programmer and you like the idea of using math to express how object move around and interact, VidScript is for you.
     If you are an artist who prefers convenient tools with intuitive graphical interfaces, you'll probably hate VidScript.
     If you are unsure, scroll down and see if you like what you see.
@@ -372,12 +372,13 @@ convert -delay 10 -loop 0 hello/video/*.png hello.gif
 convert -delay 10 -loop 0 hello/video/*.png hello.mp4
 </pre>
 
-<p>Unfortunately, ImageMagick doesn't support videos with transparency. To do that, you might use ffmpeg:</p>
+<p>Unfortunately, ImageMagick doesn't support videos with transparency.
+This video doesn't have any transparency, but if you make one without a background, 
+you might use ffmpeg to generate a video that supports transparency:</p>
 
 <pre class="green">
-ffmpeg -framerate 10 -pattern_type glob -i \
-'hello/video/*.png' \-c:v prores \
--pix_fmt yuva444p10le hello.mov
+ffmpeg -i hello/video/f%07d.png -r 10 \
+ -pix_fmt yuva420p hello.webm
 </pre>
 
 <p>Anyway, this is what it looks like:</p>
@@ -699,7 +700,7 @@ video
     <li><b>y</b> = relative vertical translation</li>
     <li><b>z</b> = specify z-ordering</li>
     <li><b>t</b> = time. Ranges from 0 to 1 over the lifetime of the object.</li>
-    <li><b>ft</b> = frame time. The duration in time units of a single frame. (read only)</li>
+    <li><b>ft</b> = The duration in time units of one percent of the whole animation. (read only)</li>
     <li><b>scale</b> = scales the part.</li>
     <li><b>hscale</b> = horizontally scales the part.</li>
     <li><b>vscale</b> = vertically scales the part.</li>
@@ -1299,14 +1300,13 @@ video
 <center><img src="succinct.gif"></center>
 
 <p>
-    The importat type to consider in this video is "bounce_right_and_stay".
+    The important type to consider in this video is "bounce_right_and_stay".
     Notice it has two parts, "bounce_right", and "sub".
-    The "bounce_right" part does the animation.
-    The arg "end = 15 * ft" tells it to make this animation last for 15 frames.
+    The "bounce_right" part does the animation where it bounces in from left-to-right.
+    The arg "end = 15 * ft" tells it to make this animation last for 15 percent of the duration of the video.
     The "sub" part just displays whatever thing we are animating.
     The arg "beg = 15 * ft" tells it to just show that thing when the animation is done.
 </p>
-
 
 
 
